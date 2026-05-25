@@ -13,6 +13,7 @@ export interface PhoneGroup {
   condition: string
   batteryHealth?: number
   costPrice: number
+  ptaStatus: string
   quantity: number
   phones: PhoneEntry[]
 }

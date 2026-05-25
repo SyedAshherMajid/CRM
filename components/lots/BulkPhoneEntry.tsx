@@ -81,6 +81,9 @@ export function BulkPhoneEntry() {
               </p>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <Badge variant="secondary" className="text-xs">{group.condition}</Badge>
+                {group.ptaStatus && (
+                  <Badge variant="outline" className="text-xs">{group.ptaStatus}</Badge>
+                )}
                 <span className="text-xs text-gray-500">PKR {Number(group.costPrice).toLocaleString()} each</span>
                 <span className="text-xs text-gray-500">×{group.quantity}</span>
                 {group.batteryHealth && (

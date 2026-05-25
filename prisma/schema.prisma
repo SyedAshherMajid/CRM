@@ -72,6 +72,14 @@ enum Brand {
   GooglePixel @map("Google Pixel")
 }
 
+enum PtaStatus {
+  JV
+  PTA
+  NonPTA  @map("Non-PTA")
+  Patched
+  CPID
+}
+
 enum Storage {
   GB64  @map("64GB")
   GB128 @map("128GB")
@@ -107,6 +115,7 @@ model Phone {
   condition     Condition
   batteryHealth Int?        @map("battery_health")
   costPrice     Decimal     @map("cost_price") @db.Decimal(12, 2)
+  ptaStatus     PtaStatus?  @map("pta_status")
   status        PhoneStatus @default(available)
   notes         String?
   addedBy       String      @map("added_by")

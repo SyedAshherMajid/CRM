@@ -17,7 +17,7 @@ import { maskIMEI } from "@/lib/utils/imei"
 
 interface Phone {
   id: string; brand: string; model: string; storage: string; color: string
-  imei: string; condition: string; batteryHealth: number | null
+  imei: string; condition: string; ptaStatus: string | null; batteryHealth: number | null
   costPrice: string; status: string; notes: string | null
   sale: { sellingPrice: string; amountReceived: string; saleType: string; shopBuyer: { name: string } | null; customerName: string | null } | null
 }
@@ -215,6 +215,11 @@ export default function LotDetailPage() {
                         <Badge className={`${STATUS_COLORS[phone.status]} border-0 text-xs`}>
                           {phone.status}
                         </Badge>
+                        {phone.ptaStatus && (
+                          <Badge variant="outline" className="text-xs border-gray-200 text-gray-500">
+                            {phone.ptaStatus}
+                          </Badge>
+                        )}
                         <span className="text-xs text-gray-500">Cost: {formatPKR(Number(phone.costPrice))}</span>
                         {phone.batteryHealth && (
                           <span className="text-xs text-gray-400">🔋 {phone.batteryHealth}%</span>

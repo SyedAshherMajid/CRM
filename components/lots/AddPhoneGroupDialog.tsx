@@ -17,29 +17,42 @@ interface Props {
 
 const brands = ["iPhone", "Google Pixel"] as const
 
+const PTA_OPTIONS: Record<string, string[]> = {
+  iPhone: ["JV", "PTA", "Non-PTA"],
+  "Google Pixel": ["PTA", "Non-PTA", "Patched", "CPID"],
+}
+
 export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
   const [brand, setBrand] = useState<"iPhone" | "Google Pixel">("iPhone")
   const [model, setModel] = useState("")
   const [storage, setStorage] = useState("")
   const [color, setColor] = useState("")
   const [condition, setCondition] = useState("")
+  const [ptaStatus, setPtaStatus] = useState("")
   const [batteryHealth, setBatteryHealth] = useState("")
   const [costPrice, setCostPrice] = useState("")
   const [quantity, setQuantity] = useState("")
 
   function reset() {
     setModel(""); setStorage(""); setColor(""); setCondition("")
-    setBatteryHealth(""); setCostPrice(""); setQuantity("")
+    setPtaStatus(""); setBatteryHealth(""); setCostPrice(""); setQuantity("")
+  }
+
+  function handleBrandChange(b: "iPhone" | "Google Pixel") {
+    setBrand(b)
+    setModel("")
+    setPtaStatus("") // reset PTA when brand changes
   }
 
   function handleAdd() {
-    if (!model || !storage || !color || !condition || !costPrice || !quantity) return
+    if (!model || !storage || !color || !condition || !ptaStatus || !costPrice || !quantity) return
     onAdd({
       brand,
       model,
       storage,
       color: color.trim(),
       condition,
+      ptaStatus,
       batteryHealth: batteryHealth ? Number(batteryHealth) : undefined,
       costPrice: Number(costPrice),
       quantity: Number(quantity),
@@ -49,7 +62,8 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
   }
 
   const models = ALL_MODELS[brand]
-  const isValid = model && storage && color.trim() && condition && costPrice && Number(quantity) > 0
+  const ptaOptions = PTA_OPTIONS[brand]
+  const isValid = model && storage && color.trim() && condition && ptaStatus && costPrice && Number(quantity) > 0
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -59,14 +73,15 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* Brand toggle */}
+          {/* Brand */}
           <div className="space-y-1.5">
             <Label>Brand *</Label>
             <div className="grid grid-cols-2 gap-2">
               {brands.map((b) => (
                 <button
                   key={b}
-                  onClick={() => { setBrand(b); setModel("") }}
+                  type="button"
+                  onClick={() => handleBrandChange(b)}
                   className={cn(
                     "py-2.5 px-3 rounded-lg border text-sm font-medium transition-colors",
                     brand === b
@@ -100,6 +115,7 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
               {STORAGE_OPTIONS.map((s) => (
                 <button
                   key={s}
+                  type="button"
                   onClick={() => setStorage(s)}
                   className={cn(
                     "px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
@@ -128,14 +144,45 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
           {/* Condition */}
           <div className="space-y-1.5">
             <Label>Condition *</Label>
-            <select
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Select condition...</option>
-              {CONDITION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {CONDITION_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCondition(c)}
+                  className={cn(
+                    "px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                    condition === c
+                      ? "bg-black text-white border-black"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                  )}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* PTA Status */}
+          <div className="space-y-1.5">
+            <Label>PTA Status *</Label>
+            <div className="flex flex-wrap gap-2">
+              {ptaOptions.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPtaStatus(p)}
+                  className={cn(
+                    "px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                    ptaStatus === p
+                      ? "bg-black text-white border-black"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Battery Health — optional */}
@@ -151,7 +198,7 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
             />
           </div>
 
-          {/* Cost price & quantity side by side */}
+          {/* Cost price & quantity */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Cost Price (PKR) *</Label>

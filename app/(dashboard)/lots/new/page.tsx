@@ -53,6 +53,7 @@ export default function NewLotPage() {
           storage: g.storage,
           color: g.color,
           condition: g.condition,
+          ptaStatus: g.ptaStatus,
           batteryHealth: g.batteryHealth,
           costPrice: g.costPrice,
           imei: p.imei,
