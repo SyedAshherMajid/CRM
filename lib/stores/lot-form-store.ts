@@ -2,6 +2,10 @@ import { create } from "zustand"
 
 export interface PhoneEntry {
   imei: string
+  storage: string
+  color: string
+  condition: string
+  batteryHealth?: number
 }
 
 export interface PhoneGroup {
@@ -31,6 +35,7 @@ interface LotFormStore {
   addGroup: (group: Omit<PhoneGroup, "id" | "phones">) => void
   removeGroup: (id: string) => void
   updateIMEI: (groupId: string, phoneIdx: number, imei: string) => void
+  updatePhoneField: (groupId: string, phoneIdx: number, updates: Partial<Omit<PhoneEntry, "imei">>) => void
   totalPhones: () => number
   reset: () => void
 }
@@ -55,7 +60,13 @@ export const useLotFormStore = create<LotFormStore>((set, get) => ({
         {
           ...group,
           id: crypto.randomUUID(),
-          phones: Array.from({ length: group.quantity }, () => ({ imei: "" })),
+          phones: Array.from({ length: group.quantity }, () => ({
+            imei: "",
+            storage: group.storage,
+            color: group.color,
+            condition: group.condition,
+            batteryHealth: group.batteryHealth,
+          })),
         },
       ],
     })),
@@ -70,7 +81,19 @@ export const useLotFormStore = create<LotFormStore>((set, get) => ({
           ? g
           : {
               ...g,
-              phones: g.phones.map((p, i) => (i === phoneIdx ? { imei } : p)),
+              phones: g.phones.map((p, i) => (i === phoneIdx ? { ...p, imei } : p)),
+            }
+      ),
+    })),
+
+  updatePhoneField: (groupId, phoneIdx, updates) =>
+    set((state) => ({
+      groups: state.groups.map((g) =>
+        g.id !== groupId
+          ? g
+          : {
+              ...g,
+              phones: g.phones.map((p, i) => (i === phoneIdx ? { ...p, ...updates } : p)),
             }
       ),
     })),

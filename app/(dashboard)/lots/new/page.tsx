@@ -50,11 +50,11 @@ export default function NewLotPage() {
         .map((p) => ({
           brand: g.brand,
           model: g.model,
-          storage: g.storage,
-          color: g.color,
-          condition: g.condition,
+          storage: p.storage,
+          color: p.color || g.color,
+          condition: p.condition,
           ptaStatus: g.ptaStatus,
-          batteryHealth: g.batteryHealth,
+          batteryHealth: p.batteryHealth,
           costPrice: g.costPrice,
           imei: p.imei,
         }))
