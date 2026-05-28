@@ -4,19 +4,24 @@ import { getCurrentUser } from "@/lib/get-current-user"
 import { toBrand, toStorage, toCondition, toPtaStatus } from "@/lib/utils/enum-mappers"
 
 export async function GET() {
-  const user = await getCurrentUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const lots = await db.purchaseLot.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      supplier: { select: { id: true, name: true } },
-      _count: { select: { phones: true } },
-      phones: { select: { status: true } },
-    },
-  })
+    const lots = await db.purchaseLot.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        supplier: { select: { id: true, name: true } },
+        _count: { select: { phones: true } },
+        phones: { select: { status: true } },
+      },
+    })
 
-  return NextResponse.json(lots)
+    return NextResponse.json(lots)
+  } catch (err) {
+    console.error("[GET /api/lots]", err)
+    return NextResponse.json({ error: "Failed to load lots" }, { status: 500 })
+  }
 }
 
 export async function POST(req: Request) {

@@ -105,10 +105,13 @@ export default function InventoryPage() {
   }, [search])
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fetch("/api/lots").then((r) => r.json()).then((data: any[]) => {
-      setLots(data.map((l) => ({ id: l.id, name: l.name })))
-    })
+    fetch("/api/lots")
+      .then(async (r) => (r.ok ? r.json() : []))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then((data: any[]) => {
+        if (Array.isArray(data)) setLots(data.map((l) => ({ id: l.id, name: l.name })))
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export default function InventoryPage() {
     if (lotId !== "all") params.set("lotId", lotId)
 
     fetch(`/api/phones?${params}`)
-      .then((r) => r.json())
+      .then(async (r) => (r.ok ? r.json() : []))
       .then((data) => {
         setPhones(Array.isArray(data) ? data : [])
         setLoading(false)
