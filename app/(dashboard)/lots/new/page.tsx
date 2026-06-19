@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -135,7 +136,7 @@ export default function NewLotPage() {
               onChange={(e) => store.setField("name", e.target.value)}
               className="h-12 text-base"
             />
-            <p className="text-xs text-gray-400">Give it a name you'll easily remember</p>
+            <p className="text-xs text-gray-400">Give it a name you&apos;ll easily remember</p>
           </div>
 
           <div className="space-y-1.5">
@@ -151,7 +152,7 @@ export default function NewLotPage() {
               ))}
             </select>
             <p className="text-xs text-gray-400">
-              Don&apos;t see them? <a href="/suppliers" className="underline text-gray-600">Add supplier first</a>
+              Don&apos;t see them? <Link href="/suppliers" className="underline text-gray-600">Add supplier first</Link>
             </p>
           </div>
 

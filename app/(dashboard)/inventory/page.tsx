@@ -4,12 +4,14 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, SlidersHorizontal } from "lucide-react"
+import { Search, SlidersHorizontal, Plus } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
 import { IPHONE_MODELS, PIXEL_MODELS } from "@/lib/phone-models"
+import { AddSinglePhoneDialog } from "@/components/inventory/AddSinglePhoneDialog"
 
 interface PhoneListItem {
   id: string
@@ -96,6 +98,7 @@ export default function InventoryPage() {
   const [lotId, setLotId] = useState("all")
   const [phones, setPhones] = useState<PhoneListItem[]>([])
   const [lots, setLots] = useState<{ id: string; name: string }[]>([])
+  const [addSinglePhoneOpen, setAddSinglePhoneOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
 
@@ -134,7 +137,11 @@ export default function InventoryPage() {
   }, [debouncedSearch, status, brand, storage, model, lotId])
 
   // Reset model when brand changes
-  useEffect(() => { setModel("all") }, [brand])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setModel("all")
+  }, [brand])
 
   const modelOpts = [
     { value: "all", label: "All Models" },
@@ -149,13 +156,24 @@ export default function InventoryPage() {
   const hasActiveFilter = status !== "all" || brand !== "all" || storage !== "all" || model !== "all" || lotId !== "all"
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-2xl mx-auto space-y-4 pb-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">Inventory</h1>
-        {!loading && (
-          <span className="text-sm text-gray-500">{phones.length} phones</span>
-        )}
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => setAddSinglePhoneOpen(true)}
+            className="h-9"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add Single Phone
+          </Button>
+          {!loading && (
+            <span className="text-sm text-gray-500 self-center">{phones.length} phones</span>
+          )}
+        </div>
       </div>
 
       {/* Search */}
@@ -288,6 +306,24 @@ export default function InventoryPage() {
           ))
         )}
       </div>
+
+      {/* Add Single Phone Dialog */}
+      <AddSinglePhoneDialog
+        open={addSinglePhoneOpen}
+        onOpenChange={setAddSinglePhoneOpen}
+        onSuccess={() => {
+          setAddSinglePhoneOpen(false)
+          // Reload phones
+          const params = new URLSearchParams()
+          if (debouncedSearch) params.append("search", debouncedSearch)
+          if (status !== "all") params.append("status", status)
+          if (brand !== "all") params.append("brand", brand)
+          if (storage !== "all") params.append("storage", storage)
+          if (model !== "all") params.append("model", model)
+          if (lotId !== "all") params.append("lotId", lotId)
+          fetch(`/api/phones?${params}`).then((r) => r.json()).then(setPhones)
+        }}
+      />
     </div>
   )
 }

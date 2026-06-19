@@ -32,7 +32,9 @@ export default function ShopsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadShops() }, [])
+  useEffect(() => {
+    loadShops()
+  }, [])
 
   async function handleAdd() {
     if (!name.trim()) return

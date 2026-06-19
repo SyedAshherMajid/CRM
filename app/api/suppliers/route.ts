@@ -14,7 +14,15 @@ export async function GET() {
     },
   })
 
-  return NextResponse.json(suppliers)
+  return NextResponse.json(
+    suppliers.map(s => ({
+      id: s.id,
+      name: s.name,
+      phone: s.phone,
+      lotsCount: s._count.lots,
+      totalAmountOwed: s.lots.reduce((sum, lot) => sum + (Number(lot.totalAmount) - Number(lot.amountPaid)), 0),
+    }))
+  )
 }
 
 export async function POST(req: Request) {
@@ -32,5 +40,14 @@ export async function POST(req: Request) {
     data: { name: name.trim(), phone: phone?.trim() || null, notes: notes?.trim() || null },
   })
 
-  return NextResponse.json(supplier, { status: 201 })
+  return NextResponse.json(
+    {
+      id: supplier.id,
+      name: supplier.name,
+      phone: supplier.phone,
+      lotsCount: 0,
+      totalAmountOwed: 0,
+    },
+    { status: 201 }
+  )
 }

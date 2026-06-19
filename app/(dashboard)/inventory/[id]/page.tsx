@@ -80,7 +80,7 @@ export default function PhoneDetailPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => { load() }, [id, router])
 
   function openEdit() {
     if (!phone) return

@@ -14,11 +14,12 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now()) @map("created_at")
 
-  lotsCreated  PurchaseLot[]
-  lotPayments  LotPayment[]
-  phonesAdded  Phone[]
-  salesMade    Sale[]
-  salePayments SalePayment[]
+  lotsCreated      PurchaseLot[]
+  lotPayments      LotPayment[]
+  phonesAdded      Phone[]
+  salesMade        Sale[]
+  salePayments     SalePayment[]
+  supplierPayments SupplierPayment[]
 
   @@map("users")
 }
@@ -30,7 +31,8 @@ model Supplier {
   notes     String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  lots PurchaseLot[]
+  lots     PurchaseLot[]
+  payments SupplierPayment[]
 
   @@map("suppliers")
 }
@@ -178,4 +180,18 @@ model SalePayment {
   recorder User @relation(fields: [recordedBy], references: [id])
 
   @@map("sale_payments")
+}
+
+model SupplierPayment {
+  id         String   @id @default(uuid())
+  supplierId String   @map("supplier_id")
+  amount     Decimal  @db.Decimal(12, 2)
+  paidAt     DateTime @default(now()) @map("paid_at")
+  notes      String?
+  recordedBy String   @map("recorded_by")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  recorder User     @relation(fields: [recordedBy], references: [id])
+
+  @@map("supplier_payments")
 }

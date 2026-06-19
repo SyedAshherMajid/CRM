@@ -1,231 +1,200 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Plus, Truck, Phone, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Plus, Edit2, Trash2, Phone } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 
 interface Supplier {
   id: string
   name: string
   phone: string | null
-  notes: string | null
-  _count: { lots: number }
-  lots: { totalAmount: string; amountPaid: string }[]
+  lotsCount: number
+  totalAmountOwed: number
 }
-
-const emptyForm = { name: "", phone: "", notes: "" }
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<Supplier | null>(null)
-  const [form, setForm] = useState(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addName, setAddName] = useState("")
+  const [addPhone, setAddPhone] = useState("")
+  const [addNotes, setAddNotes] = useState("")
+  const [adding, setAdding] = useState(false)
 
-  async function loadSuppliers() {
-    const res = await fetch("/api/suppliers")
-    const data = await res.json()
-    setSuppliers(data)
-    setLoading(false)
+  useEffect(() => {
+    async function loadSuppliers() {
+      try {
+        const res = await fetch("/api/suppliers")
+        if (!res.ok) throw new Error("Failed to load suppliers")
+        const data = await res.json()
+        setSuppliers(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error(err)
+        toast.error("Failed to load suppliers")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadSuppliers()
+  }, [])
+
+  async function handleDeleteSupplier(id: string, name: string) {
+    if (!confirm(`Delete ${name}?`)) return
+
+    try {
+      const res = await fetch(`/api/suppliers/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error)
+      }
+      setSuppliers(prev => prev.filter(s => s.id !== id))
+      toast.success("Supplier deleted")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete supplier")
+    }
   }
 
-  useEffect(() => { loadSuppliers() }, [])
-
-  function openAdd() {
-    setEditing(null)
-    setForm(emptyForm)
-    setDialogOpen(true)
-  }
-
-  function openEdit(s: Supplier) {
-    setEditing(s)
-    setForm({ name: s.name, phone: s.phone ?? "", notes: s.notes ?? "" })
-    setDialogOpen(true)
-  }
-
-  async function handleSave() {
-    if (!form.name.trim()) { toast.error("Supplier name is required"); return }
-    setSaving(true)
-
-    const url = editing ? `/api/suppliers/${editing.id}` : "/api/suppliers"
-    const method = editing ? "PATCH" : "POST"
-
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    })
-
-    if (!res.ok) {
-      const err = await res.json()
-      toast.error(err.error ?? "Something went wrong")
-      setSaving(false)
+  async function handleAddSupplier() {
+    if (!addName.trim()) {
+      toast.error("Supplier name is required")
       return
     }
 
-    toast.success(editing ? "Supplier updated" : "Supplier added")
-    setDialogOpen(false)
-    setSaving(false)
-    loadSuppliers()
-  }
-
-  async function handleDelete(id: string) {
-    const res = await fetch(`/api/suppliers/${id}`, { method: "DELETE" })
-    if (!res.ok) {
-      const err = await res.json()
-      toast.error(err.error ?? "Cannot delete supplier")
-    } else {
-      toast.success("Supplier deleted")
-      setSuppliers((s) => s.filter((x) => x.id !== id))
+    setAdding(true)
+    try {
+      const res = await fetch("/api/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: addName.trim(),
+          phone: addPhone.trim() || null,
+          notes: addNotes.trim() || null,
+        }),
+      })
+      if (!res.ok) throw new Error("Failed to create supplier")
+      const newSupplier = await res.json()
+      setSuppliers(prev => [newSupplier, ...prev])
+      setAddOpen(false)
+      setAddName("")
+      setAddPhone("")
+      setAddNotes("")
+      toast.success("Supplier added")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add supplier")
+    } finally {
+      setAdding(false)
     }
-    setDeleteId(null)
   }
 
-  const totalOwed = (s: Supplier) =>
-    s.lots.reduce((sum, l) => sum + (Number(l.totalAmount) - Number(l.amountPaid)), 0)
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4 pb-6">
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-4xl mx-auto space-y-6 pb-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">People you buy phones from</p>
+          <h1 className="text-2xl font-bold text-gray-900">Suppliers</h1>
+          <p className="text-sm text-gray-500 mt-1">People you buy phones from</p>
         </div>
-        <Button onClick={openAdd} className="h-10">
-          <Plus className="w-4 h-4 mr-1" /> Add Supplier
-        </Button>
+        <Button onClick={() => setAddOpen(true)}><Plus className="w-4 h-4 mr-2" />Add Supplier</Button>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-        </div>
-      ) : suppliers.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <Truck className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="font-medium">No suppliers yet</p>
-          <p className="text-sm mt-1">Add your first supplier to get started</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {suppliers.map((s) => {
-            const owed = totalOwed(s)
-            return (
-              <Card key={s.id} className="shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
+      {suppliers.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3">
+          {suppliers.map(supplier => (
+            <Link key={supplier.id} href={`/suppliers/${supplier.id}`}>
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-gray-900">{s.name}</p>
-                        <Badge variant="secondary" className="text-xs">
-                          {s._count.lots} lot{s._count.lots !== 1 ? "s" : ""}
-                        </Badge>
-                      </div>
-                      {s.phone && (
-                        <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-500">
-                          <Phone className="w-3.5 h-3.5" />
-                          {s.phone}
-                        </div>
-                      )}
-                      {owed > 0 && (
-                        <p className="text-sm font-medium text-orange-600 mt-1.5">
-                          Outstanding: {formatPKR(owed)}
-                        </p>
-                      )}
-                      {owed === 0 && s._count.lots > 0 && (
-                        <p className="text-sm text-green-600 mt-1.5">All settled ✓</p>
-                      )}
+                      <h3 className="font-semibold text-gray-900 text-lg">{supplier.name}</h3>
+                      <p className="text-sm text-gray-500">{supplier.lotsCount} lot{supplier.lotsCount !== 1 ? "s" : ""}</p>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(s)} className="h-8 w-8">
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon"
-                        onClick={() => setDeleteId(s.id)}
-                        className="h-8 w-8 text-red-500 hover:text-red-700"
-                      >
+                    <div className="flex gap-2 flex-shrink-0 ml-2">
+                      <button className="text-gray-400 hover:text-blue-600 transition" onClick={e => {e.preventDefault(); e.stopPropagation()}}>
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button className="text-gray-400 hover:text-red-600 transition" onClick={e => {e.preventDefault(); e.stopPropagation(); handleDeleteSupplier(supplier.id, supplier.name)}}>
                         <Trash2 className="w-4 h-4" />
-                      </Button>
+                      </button>
                     </div>
+                  </div>
+
+                  {supplier.phone && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                      <Phone className="w-4 h-4" />
+                      {supplier.phone}
+                    </div>
+                  )}
+
+                  <div className={`text-sm font-medium ${supplier.totalAmountOwed > 0 ? "text-orange-600" : "text-green-600"}`}>
+                    {supplier.totalAmountOwed > 0 ? `Outstanding: ${formatPKR(supplier.totalAmountOwed)}` : "Settled"}
                   </div>
                 </CardContent>
               </Card>
-            )
-          })}
+            </Link>
+          ))}
         </div>
+      ) : (
+        <Card><CardContent className="pt-12 text-center"><p className="text-gray-500 mb-4">No suppliers yet</p><Button onClick={() => setAddOpen(true)}><Plus className="w-4 h-4 mr-2" />Add First Supplier</Button></CardContent></Card>
       )}
 
-      {/* Add / Edit dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Supplier" : "Add Supplier"}</DialogTitle>
+            <DialogTitle>Add New Supplier</DialogTitle>
+            <DialogDescription>Enter supplier details</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Name *</Label>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="name">Supplier Name *</Label>
               <Input
-                placeholder="e.g. Ali bhai, Khan & Sons"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="h-11"
+                id="name"
+                placeholder="e.g., Ali Bhai"
+                value={addName}
+                onChange={e => setAddName(e.target.value)}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Phone number</Label>
+            <div>
+              <Label htmlFor="phone">Phone Number</Label>
               <Input
-                placeholder="03xx-xxxxxxx"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="h-11"
-                type="tel"
+                id="phone"
+                placeholder="+92 300 1234567"
+                value={addPhone}
+                onChange={e => setAddPhone(e.target.value)}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
+            <div>
+              <Label htmlFor="notes">Notes</Label>
               <Input
-                placeholder="Optional notes"
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                className="h-11"
+                id="notes"
+                placeholder="Any notes..."
+                value={addNotes}
+                onChange={e => setAddNotes(e.target.value)}
               />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button onClick={handleAddSupplier} disabled={adding}>
+                {adding ? "Adding..." : "Add Supplier"}
+              </Button>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              {editing ? "Save Changes" : "Add Supplier"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete confirm dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Supplier?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-gray-500 py-2">
-            This cannot be undone. Suppliers with purchase lots cannot be deleted.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>
-              Delete
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

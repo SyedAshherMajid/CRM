@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { Search, Plus, Trash2, ArrowLeft, ArrowRight, Check, Loader2, ShoppingBag } from "lucide-react"
+import { Search, Plus, Trash2, ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
@@ -664,13 +663,15 @@ export default function SalesPage() {
   const [loadingRecent, setLoadingRecent] = useState(true)
 
   useEffect(() => {
+    let isMounted = true
     fetch("/api/shops").then(async (r) => (r.ok ? r.json() : [])).then((d) => {
-      if (Array.isArray(d)) setShops(d)
+      if (isMounted && Array.isArray(d)) setShops(d)
     })
     fetch("/api/sales").then(async (r) => (r.ok ? r.json() : [])).then((d) => {
-      if (Array.isArray(d)) setRecentSales(d)
-      setLoadingRecent(false)
+      if (isMounted && Array.isArray(d)) setRecentSales(d)
+      if (isMounted) setLoadingRecent(false)
     })
+    return () => { isMounted = false }
   }, [])
 
   return (

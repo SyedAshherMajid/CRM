@@ -5,13 +5,14 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Calendar, Loader2 } from "lucide-react"
+import { ArrowLeft, Plus, Calendar, Loader2, Pencil, Trash2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 
@@ -47,14 +48,27 @@ export default function LotDetailPage() {
   const [payNotes, setPayNotes] = useState("")
   const [paying, setPaying] = useState(false)
 
+  // Edit lot dialog
+  const [editDialog, setEditDialog] = useState(false)
+  const [editName, setEditName] = useState("")
+  const [editNotes, setEditNotes] = useState("")
+  const [editing, setEditing] = useState(false)
+
+  // Delete lot dialog
+  const [deleteDialog, setDeleteDialog] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   async function loadLot() {
     const res = await fetch(`/api/lots/${id}`)
     if (!res.ok) { router.push("/lots"); return }
-    setLot(await res.json())
+    const data = await res.json()
+    setLot(data)
+    setEditName(data.name)
+    setEditNotes(data.notes || "")
     setLoading(false)
   }
 
-  useEffect(() => { loadLot() }, [id])
+  useEffect(() => { loadLot() }, [id, router])
 
   async function handlePayment() {
     if (!payAmount || Number(payAmount) <= 0) { toast.error("Enter a valid amount"); return }
@@ -74,6 +88,52 @@ export default function LotDetailPage() {
       loadLot()
     }
     setPaying(false)
+  }
+
+  async function handleEditLot() {
+    if (!editName.trim()) {
+      toast.error("Lot name is required")
+      return
+    }
+
+    setEditing(true)
+    try {
+      const res = await fetch(`/api/lots/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          notes: editNotes.trim() || null,
+        }),
+      })
+
+      if (!res.ok) throw new Error("Failed to update lot")
+
+      const updated = await res.json()
+      setLot((prev) => (prev ? { ...prev, ...updated } : null))
+      setEditDialog(false)
+      toast.success("Lot updated!")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update lot")
+    } finally {
+      setEditing(false)
+    }
+  }
+
+  async function handleDeleteLot() {
+    if (!confirm(`Delete lot "${lot?.name}" and all associated data?`)) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/lots/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Failed to delete lot")
+
+      toast.success("Lot deleted!")
+      router.push("/lots")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete lot")
+      setDeleting(false)
+    }
   }
 
   if (loading) return (
@@ -120,6 +180,24 @@ export default function LotDetailPage() {
             {lot.supplier?.name ?? "No supplier"} ·{" "}
             {new Date(lot.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
           </p>
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button
+            onClick={() => setEditDialog(true)}
+            variant="outline"
+            size="sm"
+            className="h-9"
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+          <Button
+            onClick={() => setDeleteDialog(true)}
+            variant="outline"
+            size="sm"
+            className="h-9 text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
@@ -283,6 +361,75 @@ export default function LotDetailPage() {
             <Button onClick={handlePayment} disabled={paying}>
               {paying ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Lot Dialog */}
+      <Dialog open={editDialog} onOpenChange={setEditDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Lot</DialogTitle>
+            <DialogDescription>Update lot information</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label>Lot Name *</Label>
+              <Input
+                placeholder="e.g. Ali bhai July batch"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Notes</Label>
+              <Textarea
+                placeholder="Any additional notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                className="resize-none"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={() => setEditDialog(false)} variant="outline" className="h-11">
+              Cancel
+            </Button>
+            <Button onClick={handleEditLot} disabled={editing} className="h-11">
+              {editing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Pencil className="w-4 h-4 mr-2" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Lot Dialog */}
+      <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Lot?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete &quot;{lot?.name}&quot; and all associated phones and records.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button onClick={() => setDeleteDialog(false)} variant="outline" className="h-11">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteLot}
+              disabled={deleting}
+              className="h-11 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
