@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutDashboard, Package, PlusCircle, ShoppingBag, MoreHorizontal } from "lucide-react"
@@ -25,6 +26,7 @@ const moreLinks = [
 
 export function BottomNav() {
   const pathname = usePathname()
+  const [open, setOpen] = useState(false)
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 md:hidden">
@@ -62,7 +64,7 @@ export function BottomNav() {
         })}
 
         {/* More sheet */}
-        <Sheet>
+        <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <button className="flex flex-col items-center justify-center flex-1 h-full gap-1 text-xs font-medium text-gray-500">
               <MoreHorizontal className="w-5 h-5 text-gray-400" />
@@ -75,7 +77,7 @@ export function BottomNav() {
               <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
               <div className="grid grid-cols-2 gap-3">
                 {moreLinks.map(({ href, label, icon: Icon }) => (
-                  <Link key={href} href={href}>
+                  <Link key={href} href={href} onClick={() => setOpen(false)}>
                     <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
                       <Icon className="w-5 h-5 text-gray-600" />
                       <span className="font-medium text-gray-800">{label}</span>
