@@ -20,8 +20,14 @@ export async function GET(req: Request) {
     const where: Prisma.PhoneWhereInput = {}
 
     if (search) {
+      const isDigitOnly = /^\d+$/.test(search)
       where.OR = [
-        { imei: { contains: search } },
+        // IMEI search: if digits-only, use endsWith (last N digits match)
+        // endsWith = LIKE '%value' which the DB can optimize for short suffix searches
+        // vs contains = LIKE '%value%' which always full-scans
+        isDigitOnly
+          ? { imei: { endsWith: search } }
+          : { imei: { contains: search } },
         { model: { contains: search, mode: "insensitive" } },
       ]
     }
@@ -34,7 +40,7 @@ export async function GET(req: Request) {
     const phones = await db.phone.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 150,
+      take: 500,
       include: {
         lot: { select: { id: true, name: true } },
       },

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await req.json()
-    const { brand, model, storage, color, condition, batteryHealth, costPrice, imei, notes } = body
+    const { brand, model, storage, color, condition, batteryHealth, costPrice, imei, notes, sellerCnic, sellerName } = body
 
     // Validation
     if (!brand || !model || !storage || !color || !condition || !costPrice || !imei) {
@@ -93,6 +93,8 @@ export async function POST(req: Request) {
         condition: mapCondition(condition),
         batteryHealth: batteryHealth || null,
         costPrice: Number(costPrice),
+        sellerCnic: sellerCnic?.trim() || null,
+        sellerName: sellerName?.trim() || null,
         status: "available",
         notes: notes || null,
         addedBy: user.id,

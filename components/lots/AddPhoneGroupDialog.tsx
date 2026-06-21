@@ -30,22 +30,21 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
   const [condition, setCondition] = useState("")
   const [ptaStatus, setPtaStatus] = useState("")
   const [batteryHealth, setBatteryHealth] = useState("")
-  const [costPrice, setCostPrice] = useState("")
   const [quantity, setQuantity] = useState("")
 
   function reset() {
     setModel(""); setStorage(""); setColor(""); setCondition("")
-    setPtaStatus(""); setBatteryHealth(""); setCostPrice(""); setQuantity("")
+    setPtaStatus(""); setBatteryHealth(""); setQuantity("")
   }
 
   function handleBrandChange(b: "iPhone" | "Google Pixel") {
     setBrand(b)
     setModel("")
-    setPtaStatus("") // reset PTA when brand changes
+    setPtaStatus("")
   }
 
   function handleAdd() {
-    if (!model || !storage || !color || !condition || !ptaStatus || !costPrice || !quantity) return
+    if (!model || !storage || !color || !condition || !ptaStatus || !quantity) return
     onAdd({
       brand,
       model,
@@ -54,7 +53,6 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
       condition,
       ptaStatus,
       batteryHealth: batteryHealth ? Number(batteryHealth) : undefined,
-      costPrice: Number(costPrice),
       quantity: Number(quantity),
     })
     reset()
@@ -63,16 +61,22 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
 
   const models = ALL_MODELS[brand]
   const ptaOptions = PTA_OPTIONS[brand]
-  const isValid = model && storage && color.trim() && condition && ptaStatus && costPrice && Number(quantity) > 0
+  const isValid = model && storage && color.trim() && condition && ptaStatus && Number(quantity) > 0
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
+      <DialogContent className="max-w-sm w-full flex flex-col max-h-[92vh] p-0 gap-0">
+        {/* Fixed header */}
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
           <DialogTitle>Add Phone Group</DialogTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            You&apos;ll enter the price of each phone individually on the next screen.
+          </p>
         </DialogHeader>
 
-        <div className="space-y-4 py-1">
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
           {/* Brand */}
           <div className="space-y-1.5">
             <Label>Brand *</Label>
@@ -185,30 +189,17 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
             </div>
           </div>
 
-          {/* Battery Health — optional */}
-          <div className="space-y-1.5">
-            <Label>Battery Health % <span className="text-gray-400 font-normal">(optional)</span></Label>
-            <Input
-              type="number"
-              placeholder="e.g. 85"
-              min={1} max={100}
-              value={batteryHealth}
-              onChange={(e) => setBatteryHealth(e.target.value)}
-              className="h-11"
-            />
-          </div>
-
-          {/* Cost price & quantity */}
+          {/* Battery Health & Quantity */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Cost Price (PKR) *</Label>
+              <Label>Battery % <span className="text-gray-400 font-normal">(optional)</span></Label>
               <Input
                 type="number"
-                placeholder="e.g. 85000"
-                value={costPrice}
-                onChange={(e) => setCostPrice(e.target.value)}
+                placeholder="e.g. 85"
+                min={1} max={100}
+                value={batteryHealth}
+                onChange={(e) => setBatteryHealth(e.target.value)}
                 className="h-11"
-                min={0}
               />
             </div>
             <div className="space-y-1.5">
@@ -226,12 +217,15 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleAdd} disabled={!isValid}>
+        {/* Fixed footer */}
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+          <Button variant="outline" onClick={() => { reset(); onClose() }} className="flex-1 h-11">
+            Cancel
+          </Button>
+          <Button onClick={handleAdd} disabled={!isValid} className="flex-1 h-11">
             Add {quantity ? `${quantity} Phone${Number(quantity) !== 1 ? "s" : ""}` : "Phones"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )

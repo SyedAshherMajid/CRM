@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard, Package, ShoppingBag, PlusCircle,
-  Store, Truck, BarChart3, Settings, Smartphone
+  Store, Truck, BarChart3, Settings, Smartphone, Receipt, Activity
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -13,9 +13,11 @@ const links = [
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/lots", label: "Purchase Lots", icon: ShoppingBag },
   { href: "/sales", label: "Record Sale", icon: PlusCircle },
-  { href: "/shops", label: "Shop Buyers", icon: Store },
+  { href: "/shops", label: "Buyers", icon: Store },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/stats", label: "Current Stats", icon: Activity },
+  { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
@@ -30,8 +32,8 @@ export function Sidebar() {
           <Smartphone className="w-5 h-5 text-white" />
         </div>
         <span className="font-bold text-gray-900 text-base leading-tight">
-          PhoneStore<br />
-          <span className="font-normal text-gray-500 text-xs">CRM</span>
+          Cell Sensations<br />
+          <span className="font-normal text-gray-500 text-xs">Usama Khan</span>
         </span>
       </div>
 

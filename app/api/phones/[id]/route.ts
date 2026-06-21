@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 import { fromBrand, fromStorage, fromCondition, fromPtaStatus, toCondition } from "@/lib/utils/enum-mappers"
-import { Prisma } from "@prisma/client"
+import { Condition, PhoneStatus, Prisma } from "@prisma/client"
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -66,10 +66,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const data: Prisma.PhoneUpdateInput = {}
     if (body.color !== undefined) data.color = body.color.trim()
-    if (body.condition !== undefined) data.condition = toCondition(body.condition) as any
+    if (body.condition !== undefined) data.condition = toCondition(body.condition) as Condition
     if ("batteryHealth" in body) data.batteryHealth = body.batteryHealth || null
     if ("notes" in body) data.notes = body.notes?.trim() || null
-    if (body.status !== undefined) data.status = body.status
+    if (body.status !== undefined) data.status = body.status as PhoneStatus
 
     const updated = await db.phone.update({ where: { id }, data })
 

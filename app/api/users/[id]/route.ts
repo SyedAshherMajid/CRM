@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function DELETE(
   _req: Request,
@@ -18,12 +18,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
     }
 
-    // Delete from database first
-    await db.user.delete({ where: { id } })
+    const supabase = createAdminClient()
+    const { error: authError } = await supabase.auth.admin.deleteUser(id)
 
-    // Delete from Supabase Auth
-    const supabase = await createClient()
-    await supabase.auth.admin.deleteUser(id)
+    if (authError) {
+      return NextResponse.json({ error: authError.message }, { status: 400 })
+    }
+
+    await db.user.delete({ where: { id } })
 
     return NextResponse.json({ success: true })
   } catch (err) {

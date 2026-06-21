@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Pencil, Calendar, Loader2 } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Calendar, Loader2, Trash2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
@@ -55,6 +55,10 @@ export default function ShopDetailPage() {
   const [editAddress, setEditAddress] = useState("")
   const [editNotes, setEditNotes] = useState("")
   const [editSaving, setEditSaving] = useState(false)
+
+  // Delete dialog
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/shops/${id}`)
@@ -111,6 +115,20 @@ export default function ShopDetailPage() {
     setPaying(false)
   }
 
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await fetch(`/api/shops/${id}`, { method: "DELETE" })
+    if (res.ok) {
+      toast.success("Shop deleted")
+      router.push("/shops")
+    } else {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to delete shop")
+      setDeleting(false)
+      setDeleteOpen(false)
+    }
+  }
+
   async function handleSalePayment() {
     if (!salePayDialog || !salePayAmount || Number(salePayAmount) <= 0) return
     setSalePaySaving(true)
@@ -162,6 +180,9 @@ export default function ShopDetailPage() {
         </div>
         <Button variant="ghost" size="icon" onClick={openEdit} className="h-9 w-9">
           <Pencil className="w-4 h-4 text-gray-400" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => setDeleteOpen(true)} className="h-9 w-9">
+          <Trash2 className="w-4 h-4 text-red-400" />
         </Button>
       </div>
 
@@ -375,6 +396,29 @@ export default function ShopDetailPage() {
             <Button onClick={handleEdit} disabled={editSaving || !editName.trim()}>
               {editSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete {shop.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-500 pb-2">
+            This will permanently delete this shop buyer. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

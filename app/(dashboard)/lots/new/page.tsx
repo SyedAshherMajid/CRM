@@ -56,13 +56,19 @@ export default function NewLotPage() {
           condition: p.condition,
           ptaStatus: g.ptaStatus,
           batteryHealth: p.batteryHealth,
-          costPrice: g.costPrice,
+          costPrice: p.costPrice,
           imei: p.imei,
         }))
     )
 
     if (phones.length === 0) {
       toast.error("Enter at least one IMEI number"); return
+    }
+
+    const missingPrice = phones.find((p) => !p.costPrice || p.costPrice <= 0)
+    if (missingPrice) {
+      toast.error("Every phone needs a cost price before saving")
+      return
     }
 
     setSaving(true)

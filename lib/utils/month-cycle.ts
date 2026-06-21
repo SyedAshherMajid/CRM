@@ -17,7 +17,6 @@ export function get1010MonthRange(date: Date = new Date()) {
 
   let start: Date
   let end: Date
-  let monthLabel: string
 
   if (day < 10) {
     // We're in the previous 10-10 cycle
@@ -50,7 +49,7 @@ export function get1010MonthRange(date: Date = new Date()) {
   const startMonth = monthNames[start.getMonth()]
   const endMonth = monthNames[end.getMonth()]
 
-  monthLabel = `${startMonth} 10 - ${endMonth} 9`
+  const monthLabel = `${startMonth} 10 - ${endMonth} 9`
 
   return { start, end, monthLabel }
 }

@@ -17,6 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         payments: { orderBy: { paidAt: "desc" } },
         phones: {
           orderBy: [{ model: "asc" }, { createdAt: "asc" }],
+          take: 500,
           include: {
             sale: {
               select: {
@@ -71,4 +72,46 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   })
 
   return NextResponse.json(lot)
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { id } = await params
+
+    const lot = await db.purchaseLot.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        phones: {
+          select: {
+            id: true,
+            sale: { select: { id: true } },
+          },
+        },
+      },
+    })
+
+    if (!lot) return NextResponse.json({ error: "Lot not found" }, { status: 404 })
+
+    const hasSales = lot.phones.some((phone) => phone.sale)
+    if (hasSales) {
+      return NextResponse.json(
+        { error: "Cannot delete a lot that has sold phones. Sales history must be preserved." },
+        { status: 400 }
+      )
+    }
+
+    await db.$transaction([
+      db.phone.deleteMany({ where: { lotId: id } }),
+      db.purchaseLot.delete({ where: { id } }),
+    ])
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("[DELETE /api/lots/[id]]", err)
+    return NextResponse.json({ error: "Failed to delete lot" }, { status: 500 })
+  }
 }

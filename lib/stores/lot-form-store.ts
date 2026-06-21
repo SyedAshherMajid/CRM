@@ -2,6 +2,7 @@ import { create } from "zustand"
 
 export interface PhoneEntry {
   imei: string
+  costPrice: number   // per-phone price, required before saving
   storage: string
   color: string
   condition: string
@@ -16,7 +17,6 @@ export interface PhoneGroup {
   color: string
   condition: string
   batteryHealth?: number
-  costPrice: number
   ptaStatus: string
   quantity: number
   phones: PhoneEntry[]
@@ -62,6 +62,7 @@ export const useLotFormStore = create<LotFormStore>((set, get) => ({
           id: crypto.randomUUID(),
           phones: Array.from({ length: group.quantity }, () => ({
             imei: "",
+            costPrice: 0,
             storage: group.storage,
             color: group.color,
             condition: group.condition,

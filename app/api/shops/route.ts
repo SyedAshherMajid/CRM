@@ -7,27 +7,38 @@ export async function GET() {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const shops = await db.shopBuyer.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        sales: {
-          select: { sellingPrice: true, amountReceived: true, soldAt: true },
-        },
-      },
-    })
+    // Parallel: shop rows + sale aggregates per shop in one raw SQL query
+    const [shops, saleStats] = await Promise.all([
+      db.shopBuyer.findMany({ orderBy: { createdAt: "desc" } }),
+      db.$queryRaw<Array<{
+        shop_buyer_id: string
+        total_selling: string
+        total_received: string
+        total_sales: bigint
+        pending_count: bigint
+        last_sale_at: Date | null
+      }>>`
+        SELECT
+          shop_buyer_id,
+          COALESCE(SUM(selling_price), 0)::text   AS total_selling,
+          COALESCE(SUM(amount_received), 0)::text AS total_received,
+          COUNT(*)::bigint                         AS total_sales,
+          COUNT(*) FILTER (WHERE selling_price > amount_received)::bigint AS pending_count,
+          MAX(sold_at)                             AS last_sale_at
+        FROM sales
+        WHERE shop_buyer_id IS NOT NULL
+        GROUP BY shop_buyer_id
+      `,
+    ])
+
+    const statsMap = new Map(saleStats.map((s) => [s.shop_buyer_id, s]))
 
     return NextResponse.json(
       shops.map((shop) => {
-        const outstanding = shop.sales.reduce(
-          (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
-          0
-        )
-        const lastSale = shop.sales.sort(
-          (a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime()
-        )[0]
-        const pendingCount = shop.sales.filter(
-          (s) => Number(s.sellingPrice) > Number(s.amountReceived)
-        ).length
+        const stats = statsMap.get(shop.id)
+        const outstanding = stats
+          ? Number(stats.total_selling) - Number(stats.total_received)
+          : 0
         return {
           id: shop.id,
           name: shop.name,
@@ -36,9 +47,9 @@ export async function GET() {
           notes: shop.notes,
           createdAt: shop.createdAt,
           outstanding,
-          pendingCount,
-          lastTransactionAt: lastSale?.soldAt ?? null,
-          totalSales: shop.sales.length,
+          pendingCount: stats ? Number(stats.pending_count) : 0,
+          lastTransactionAt: stats?.last_sale_at ?? null,
+          totalSales: stats ? Number(stats.total_sales) : 0,
         }
       })
     )

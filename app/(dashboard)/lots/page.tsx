@@ -17,7 +17,8 @@ interface Lot {
   createdAt: string
   supplier: { name: string } | null
   _count: { phones: number }
-  phones: { status: string }[]
+  availableCount: number
+  soldCount: number
 }
 
 export default function LotsPage() {
@@ -82,8 +83,8 @@ export default function LotsPage() {
             const paid = Number(lot.amountPaid)
             const remaining = total - paid
             const pct = total > 0 ? Math.round((paid / total) * 100) : 0
-            const available = lot.phones.filter((p) => p.status === "available").length
-            const sold = lot.phones.filter((p) => p.status === "sold").length
+            const available = lot.availableCount
+            const sold = lot.soldCount
 
             return (
               <Link key={lot.id} href={`/lots/${lot.id}`}>

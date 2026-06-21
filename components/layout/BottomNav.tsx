@@ -4,9 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutDashboard, Package, PlusCircle, ShoppingBag, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { BarChart3, Store, Users, Settings, Truck } from "lucide-react"
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { BarChart3, Store, Settings, Truck, Receipt, Activity } from "lucide-react"
 
 const mainLinks = [
   { href: "/", label: "Home", icon: LayoutDashboard },
@@ -16,9 +15,11 @@ const mainLinks = [
 ]
 
 const moreLinks = [
-  { href: "/shops", label: "Shop Buyers", icon: Store },
+  { href: "/shops", label: "Buyers", icon: Store },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/stats", label: "Current Stats", icon: Activity },
+  { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
@@ -69,6 +70,7 @@ export function BottomNav() {
             </button>
           </SheetTrigger>
           <SheetContent side="bottom" className="rounded-t-2xl pb-8">
+            <SheetTitle className="sr-only">More navigation options</SheetTitle>
             <div className="pt-2 pb-4">
               <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
               <div className="grid grid-cols-2 gap-3">

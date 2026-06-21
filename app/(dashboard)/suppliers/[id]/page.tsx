@@ -190,8 +190,7 @@ export default function SupplierDetailPage() {
     )
   }
 
-  const totalPayments = supplier.allPayments?.reduce((sum, p) => sum + parseFloat(String(p.amount)), 0) || 0
-  const remainingOwed = Math.max(0, Number(supplier.totalOwed) - totalPayments)
+  const remainingOwed = Number(supplier.totalOwed)
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-6">

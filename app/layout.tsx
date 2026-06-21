@@ -3,8 +3,8 @@ import "./globals.css"
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
-  title: "PhoneStore CRM",
-  description: "Inventory and sales management for your phone shop",
+  title: "Cell Sensations",
+  description: "Cell Sensations — Usama Khan",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

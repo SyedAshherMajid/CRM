@@ -10,57 +10,58 @@ export async function GET() {
 
     // Get current 10-10 month range (10th to 10th)
     const { start: monthStart, end: monthEnd } = get1010MonthRange()
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-    // 1. Available phones count
-    const availableCount = await db.phone.count({
-      where: { status: "available" },
-    })
+    // All 9 queries fired in parallel — total wait = slowest single query, not sum of all
+    const [
+      availableCount,
+      soldThisMonth,
+      supplierOwing,
+      supplierDirectPayments,
+      shopOwing,
+      salesThisMonth,
+      recentPhones,
+      recentSales,
+      recentPayments,
+    ] = await Promise.all([
+      // 1. Available phones count
+      db.phone.count({
+        where: { status: "available" },
+      }),
 
-    // 2. Phones sold this month
-    const soldThisMonth = await db.sale.count({
-      where: {
-        soldAt: { gte: monthStart, lte: monthEnd },
-      },
-    })
+      // 2. Phones sold this month
+      db.sale.count({
+        where: { soldAt: { gte: monthStart, lte: monthEnd } },
+      }),
 
-    // 3. Remaining owed to suppliers (sum of all lots)
-    const supplierOwing = await db.purchaseLot.aggregate({
-      _sum: { totalAmount: true, amountPaid: true },
-    })
-    const totalOwedToSuppliers =
-      (supplierOwing._sum.totalAmount?.toNumber() || 0) - (supplierOwing._sum.amountPaid?.toNumber() || 0)
+      // 3. Lot totals for supplier owing base
+      db.purchaseLot.aggregate({
+        _sum: { totalAmount: true, amountPaid: true },
+      }),
 
-    // 4. Pending from shops (sum of all sales)
-    const shopOwing = await db.sale.aggregate({
-      _sum: { sellingPrice: true, amountReceived: true },
-    })
-    const totalPendingFromShops =
-      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0)
+      // 4. Supplier-level direct payments (not tied to a specific lot)
+      db.supplierPayment.aggregate({
+        _sum: { amount: true },
+      }),
 
-    // 5. Profit this month (selling price - cost price for sales this month)
-    const salesThisMonth = await db.sale.findMany({
-      where: {
-        soldAt: { gte: monthStart, lte: monthEnd },
-      },
-      select: {
-        sellingPrice: true,
-        phone: { select: { costPrice: true } },
-      },
-    })
-    const revenueThisMonth = salesThisMonth.reduce(
-      (sum, s) => sum + Number(s.sellingPrice),
-      0
-    )
-    const costThisMonth = salesThisMonth.reduce(
-      (sum, s) => sum + Number(s.phone.costPrice),
-      0
-    )
-    const profitThisMonth = revenueThisMonth - costThisMonth
+      // 5. Pending from shops (shop-type sales only)
+      db.sale.aggregate({
+        where: { saleType: "shop" },
+        _sum: { sellingPrice: true, amountReceived: true },
+      }),
 
-    // 6. Recent activity (last 15 mixed actions)
-    const [recentPhones, recentSales, recentPayments] = await Promise.all([
+      // 5. Sales this month for profit calculation
+      db.sale.findMany({
+        where: { soldAt: { gte: monthStart, lte: monthEnd } },
+        select: {
+          sellingPrice: true,
+          phone: { select: { costPrice: true } },
+        },
+      }),
+
+      // 6. Recent phones added (activity feed)
       db.phone.findMany({
-        where: { createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        where: { createdAt: { gte: thirtyDaysAgo } },
         select: {
           id: true,
           createdAt: true,
@@ -71,8 +72,10 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 10,
       }),
+
+      // 7. Recent sales (activity feed)
       db.sale.findMany({
-        where: { soldAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        where: { soldAt: { gte: thirtyDaysAgo } },
         select: {
           id: true,
           soldAt: true,
@@ -84,8 +87,10 @@ export async function GET() {
         orderBy: { soldAt: "desc" },
         take: 10,
       }),
+
+      // 8. Recent payments (activity feed)
       db.salePayment.findMany({
-        where: { receivedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+        where: { receivedAt: { gte: thirtyDaysAgo } },
         select: {
           id: true,
           receivedAt: true,
@@ -104,7 +109,22 @@ export async function GET() {
       }),
     ])
 
-    // Merge and sort activity
+    // Calculate profit from the results
+    const revenueThisMonth = salesThisMonth.reduce((sum, s) => sum + Number(s.sellingPrice), 0)
+    const costThisMonth = salesThisMonth.reduce((sum, s) => sum + Number(s.phone.costPrice), 0)
+    const profitThisMonth = revenueThisMonth - costThisMonth
+
+    const totalOwedToSuppliers = Math.max(
+      0,
+      (supplierOwing._sum.totalAmount?.toNumber() || 0) -
+      (supplierOwing._sum.amountPaid?.toNumber() || 0) -
+      (supplierDirectPayments._sum.amount?.toNumber() || 0)
+    )
+
+    const totalPendingFromShops =
+      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0)
+
+    // Merge and sort activity feed
     const activity = [
       ...recentPhones.map((p) => ({
         id: p.id,
@@ -131,7 +151,7 @@ export async function GET() {
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, 10)
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       stats: {
         availablePhones: availableCount,
         soldThisMonth,
@@ -143,6 +163,13 @@ export async function GET() {
       },
       activity,
     })
+
+    // private = don't cache in CDN (personal business data)
+    // max-age=0 = always revalidate
+    // stale-while-revalidate=30 = serve stale data instantly while fetching fresh in background
+    // Effect: dashboard navigations feel instant even during cold starts
+    response.headers.set("Cache-Control", "private, max-age=0, stale-while-revalidate=30")
+    return response
   } catch (err) {
     console.error("[GET /api/dashboard]", err)
     return NextResponse.json({ error: "Failed to load dashboard" }, { status: 500 })

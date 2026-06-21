@@ -15,7 +15,6 @@ import {
   ShoppingCart,
   Box,
   Clock,
-  User,
 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { cn } from "@/lib/utils"

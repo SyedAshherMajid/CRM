@@ -1,6 +1,7 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -82,8 +83,7 @@ export function BulkPhoneEntry() {
                 {group.ptaStatus && (
                   <Badge variant="outline" className="text-xs">{group.ptaStatus}</Badge>
                 )}
-                <span className="text-xs text-gray-500">PKR {Number(group.costPrice).toLocaleString()} each</span>
-                <span className="text-xs text-gray-500">×{group.quantity}</span>
+                <span className="text-xs text-gray-500">×{group.quantity} phones</span>
                 {group.batteryHealth && (
                   <span className="text-xs text-gray-500">🔋 {group.batteryHealth}%</span>
                 )}
@@ -98,16 +98,17 @@ export function BulkPhoneEntry() {
             </Button>
           </div>
 
-          {/* IMEI slots */}
+          {/* IMEI + price slots */}
           <div className="p-4 space-y-3">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              Enter IMEI — change storage / color / condition / battery per phone if needed
+              Enter IMEI &amp; price for each phone
             </p>
 
             {group.phones.map((phone, idx) => {
               const refKey = getRefKey(group.id, idx)
               const isValid = phone.imei.length === 15 && validateIMEI(phone.imei)
               const isInvalid = phone.imei.length === 15 && !validateIMEI(phone.imei)
+              const priceEmpty = phone.imei.trim() !== "" && phone.costPrice <= 0
 
               const storageChanged = phone.storage !== group.storage
               const colorChanged = phone.color !== group.color
@@ -124,7 +125,7 @@ export function BulkPhoneEntry() {
                       : "border-gray-100 bg-white"
                   )}
                 >
-                  {/* IMEI row */}
+                  {/* Row 1: phone number + IMEI */}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400 w-6 text-right flex-shrink-0">
                       {idx + 1}.
@@ -156,7 +157,35 @@ export function BulkPhoneEntry() {
                     </div>
                   </div>
 
-                  {/* Per-phone overrides */}
+                  {/* Row 2: Cost price — required per phone */}
+                  <div className="pl-8">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                        PKR
+                      </span>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Cost price *"
+                        value={phone.costPrice > 0 ? phone.costPrice : ""}
+                        onChange={(e) =>
+                          updatePhoneField(group.id, idx, {
+                            costPrice: e.target.value ? Number(e.target.value) : 0,
+                          })
+                        }
+                        className={cn(
+                          "h-10 text-sm pl-10",
+                          priceEmpty && "border-orange-400 focus-visible:ring-orange-400"
+                        )}
+                        min={1}
+                      />
+                    </div>
+                    {priceEmpty && (
+                      <p className="text-xs text-orange-500 mt-0.5">Enter cost price for this phone</p>
+                    )}
+                  </div>
+
+                  {/* Row 3: Per-phone overrides */}
                   <div className="grid grid-cols-2 gap-2 pl-8">
                     {/* Storage */}
                     <div className="space-y-0.5">

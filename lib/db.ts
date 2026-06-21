@@ -8,4 +8,7 @@ export const db =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   })
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db
+// Always assign — not just in development.
+// Without this, production creates a new PrismaClient (and re-opens the
+// connection pool) on every warm request, wasting ~100-300ms per API call.
+globalForPrisma.prisma = db

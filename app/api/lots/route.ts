@@ -13,11 +13,35 @@ export async function GET() {
       include: {
         supplier: { select: { id: true, name: true } },
         _count: { select: { phones: true } },
-        phones: { select: { status: true } },
       },
     })
 
-    return NextResponse.json(lots)
+    // Count available and sold per lot using DB-side groupBy
+    // This sends back 2-3 numbers per lot instead of fetching every phone row
+    const phoneCounts = await db.phone.groupBy({
+      by: ["lotId", "status"],
+      _count: { id: true },
+      where: { lotId: { in: lots.map((l) => l.id) } },
+    })
+
+    // Build a lookup map: { lotId: { available: N, sold: N } }
+    const countMap = new Map<string, { available: number; sold: number }>()
+    for (const row of phoneCounts) {
+      if (!countMap.has(row.lotId)) countMap.set(row.lotId, { available: 0, sold: 0 })
+      const entry = countMap.get(row.lotId)!
+      if (row.status === "available") entry.available = row._count.id
+      if (row.status === "sold") entry.sold = row._count.id
+    }
+
+    const result = lots.map((lot) => ({
+      ...lot,
+      totalAmount: lot.totalAmount.toString(),
+      amountPaid: lot.amountPaid.toString(),
+      availableCount: countMap.get(lot.id)?.available ?? 0,
+      soldCount: countMap.get(lot.id)?.sold ?? 0,
+    }))
+
+    return NextResponse.json(result)
   } catch (err) {
     console.error("[GET /api/lots]", err)
     return NextResponse.json({ error: "Failed to load lots" }, { status: 500 })

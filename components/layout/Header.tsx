@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +35,7 @@ export function Header({ userName, userEmail }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 md:ml-60">
       <div className="flex items-center justify-between h-14 px-4">
-        <div className="md:hidden font-bold text-gray-900">PhoneStore CRM</div>
+        <div className="md:hidden font-bold text-gray-900">Cell Sensations</div>
         <div className="hidden md:block" /> {/* spacer for desktop */}
 
         <DropdownMenu>

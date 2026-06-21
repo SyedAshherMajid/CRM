@@ -10,41 +10,54 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { id } = await params
 
-    const shop = await db.shopBuyer.findUnique({
-      where: { id },
-      include: {
-        sales: {
-          orderBy: { soldAt: "desc" },
-          include: {
-            phone: {
-              select: {
-                id: true, brand: true, model: true, storage: true,
-                color: true, imei: true, costPrice: true,
-                lot: { select: { id: true, name: true } },
+    // All 3 queries run in parallel
+    const [shop, outstandingAgg, allPayments] = await Promise.all([
+      // Shop info + sales list (capped at 100 most recent)
+      db.shopBuyer.findUnique({
+        where: { id },
+        include: {
+          sales: {
+            orderBy: { soldAt: "desc" },
+            take: 100,
+            include: {
+              phone: {
+                select: {
+                  id: true, brand: true, model: true, storage: true,
+                  color: true, imei: true, costPrice: true,
+                  lot: { select: { id: true, name: true } },
+                },
               },
+              payments: { orderBy: { receivedAt: "desc" } },
             },
-            payments: { orderBy: { receivedAt: "desc" } },
           },
         },
-      },
-    })
+      }),
+
+      // Outstanding balance via DB aggregate — no need to load all sales just to sum them
+      db.sale.aggregate({
+        where: { shopBuyerId: id },
+        _sum: { sellingPrice: true, amountReceived: true },
+      }),
+
+      // Payment history fetched directly (not via nested flatMap over all sales)
+      db.salePayment.findMany({
+        where: { sale: { shopBuyerId: id } },
+        orderBy: { receivedAt: "desc" },
+        take: 100,
+        select: { id: true, amount: true, receivedAt: true, notes: true },
+      }),
+    ])
 
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    const outstanding = shop.sales.reduce(
-      (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
-      0
-    )
-
-    // Collect all payments across all sales, newest first
-    const allPayments = shop.sales
-      .flatMap((s) => s.payments.map((p) => ({ ...p, amount: p.amount.toString() })))
-      .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+    const outstanding =
+      (outstandingAgg._sum.sellingPrice?.toNumber() ?? 0) -
+      (outstandingAgg._sum.amountReceived?.toNumber() ?? 0)
 
     return NextResponse.json({
       ...shop,
       outstanding,
-      allPayments,
+      allPayments: allPayments.map((p) => ({ ...p, amount: p.amount.toString() })),
       sales: shop.sales.map((s) => ({
         ...s,
         sellingPrice: s.sellingPrice.toString(),
@@ -61,6 +74,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   } catch (err) {
     console.error("[GET /api/shops/[id]]", err)
     return NextResponse.json({ error: "Failed to load shop" }, { status: 500 })
+  }
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { id } = await params
+
+    const hasSales = await db.sale.count({ where: { shopBuyerId: id } })
+    if (hasSales > 0) {
+      return NextResponse.json(
+        { error: "Cannot delete a shop that has sales history. Sales records must be preserved." },
+        { status: 400 }
+      )
+    }
+
+    await db.shopBuyer.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("[DELETE /api/shops/[id]]", err)
+    return NextResponse.json({ error: "Failed to delete shop" }, { status: 500 })
   }
 }
 

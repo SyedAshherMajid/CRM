@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
   try {
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     // Create auth user via Supabase Admin API
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
       email: email.trim(),
       password,

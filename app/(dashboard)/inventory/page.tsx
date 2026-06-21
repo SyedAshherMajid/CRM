@@ -25,6 +25,8 @@ interface PhoneListItem {
   batteryHealth: number | null
   costPrice: string
   status: string
+  sellerCnic: string | null
+  sellerName: string | null
   lot: { id: string; name: string }
 }
 
@@ -291,6 +293,20 @@ export default function InventoryPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-400 mt-1 truncate">{phone.lot.name}</p>
+                    {(phone.sellerName || phone.sellerCnic) && (
+                      <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5">
+                        {phone.sellerName && (
+                          <p className="text-xs text-indigo-600 font-medium">
+                            Seller: {phone.sellerName}
+                          </p>
+                        )}
+                        {phone.sellerCnic && (
+                          <p className="text-xs text-gray-400 font-mono">
+                            CNIC: {phone.sellerCnic}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <Badge className={cn("border-0 text-xs capitalize", STATUS_COLORS[phone.status])}>

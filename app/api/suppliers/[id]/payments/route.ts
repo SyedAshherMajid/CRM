@@ -14,22 +14,46 @@ export async function POST(
     const body = await req.json()
     const { amount, notes } = body
 
-    if (!amount || amount <= 0) {
+    const paymentAmount = Number(amount)
+
+    if (!paymentAmount || paymentAmount <= 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
     }
 
     // Verify supplier exists
-    const supplier = await db.supplier.findUnique({ where: { id } })
+    const supplier = await db.supplier.findUnique({
+      where: { id },
+      include: {
+        lots: { select: { totalAmount: true, amountPaid: true } },
+        payments: { select: { amount: true } },
+      },
+    })
     if (!supplier) {
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 })
+    }
+
+    const totalLotAmount = supplier.lots.reduce((sum, lot) => sum + lot.totalAmount.toNumber(), 0)
+    const totalLotPaid = supplier.lots.reduce((sum, lot) => sum + lot.amountPaid.toNumber(), 0)
+    const totalDirectPaid = supplier.payments.reduce((sum, payment) => sum + payment.amount.toNumber(), 0)
+    const remainingOwed = Math.max(0, totalLotAmount - totalLotPaid - totalDirectPaid)
+
+    if (remainingOwed <= 0) {
+      return NextResponse.json({ error: "This supplier is already fully paid" }, { status: 400 })
+    }
+
+    if (paymentAmount > remainingOwed) {
+      return NextResponse.json(
+        { error: `Payment would exceed outstanding balance. Remaining: PKR ${remainingOwed.toLocaleString("en-PK")}` },
+        { status: 400 }
+      )
     }
 
     // Create supplier payment record
     const payment = await db.supplierPayment.create({
       data: {
         supplierId: id,
-        amount: parseFloat(amount),
-        notes: notes || null,
+        amount: paymentAmount,
+        notes: notes?.trim() || null,
         recordedBy: user.id,
         paidAt: new Date(),
       },
