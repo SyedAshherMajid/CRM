@@ -3,6 +3,8 @@ import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const HIDDEN_OWNER_EMAIL = "ashher.work@gmail.com"
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,6 +18,12 @@ export async function DELETE(
     // Cannot delete yourself
     if (id === user.id) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
+    }
+
+    // Cannot delete hidden owner account
+    const target = await db.user.findUnique({ where: { id }, select: { email: true } })
+    if (target?.email === HIDDEN_OWNER_EMAIL) {
+      return NextResponse.json({ error: "Cannot delete this account" }, { status: 403 })
     }
 
     const supabase = createAdminClient()
