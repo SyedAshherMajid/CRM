@@ -155,6 +155,7 @@ export async function GET(req: Request) {
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: "Asia/Karachi",
       }),
       notes: e.notes,
       recordedBy: e.recorder.name,

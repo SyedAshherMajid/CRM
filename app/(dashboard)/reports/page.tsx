@@ -66,9 +66,24 @@ export default function ReportsPage() {
     const names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
     for (let i = 0; i < 12; i++) {
       const d = new Date(today); d.setMonth(d.getMonth() - i)
+
+      // Use LOCAL date methods — browser runs in PKT so these give the correct
+      // Pakistani calendar date (toISOString would give UTC date, which is wrong).
+      const year  = d.getFullYear()
+      const month = d.getMonth()   // 0-indexed, PKT
+      const day   = d.getDate()    // PKT day
+
+      // Determine which 10-10 cycle this PKT date falls into
+      const startMonthIdx = day < 10 ? (month - 1 + 12) % 12 : month
+      const endMonthIdx   = day < 10 ? month : (month + 1) % 12
+      const labelYear     = (day < 10 && month === 0) ? year - 1 : year
+
+      const cycleLabel = `${names[startMonthIdx]} 10 – ${names[endMonthIdx]} 9`
+      const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+
       list.push({
-        label: `${names[d.getMonth()]} 10 – ${names[(d.getMonth()+1)%12]} 9, ${i === 0 ? "Current" : d.getFullYear()}`,
-        value: d.toISOString().split("T")[0],
+        label: i === 0 ? `${cycleLabel} (Current)` : `${cycleLabel}, ${labelYear}`,
+        value,
       })
     }
     setMonths(list)
