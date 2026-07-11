@@ -14,28 +14,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!amount || Number(amount) <= 0)
       return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 })
 
-    const sale = await db.sale.findUnique({
-      where: { id },
-      select: { sellingPrice: true, amountReceived: true },
-    })
-    if (!sale) return NextResponse.json({ error: "Sale not found" }, { status: 404 })
+    // Read, check, and write inside a single transaction so two concurrent payments
+    // on the same sale cannot both read the same amountReceived and overwrite each other.
+    const result = await db.$transaction(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        select: { sellingPrice: true, amountReceived: true },
+      })
 
-    const pending = Number(sale.sellingPrice) - Number(sale.amountReceived)
-    if (pending <= 0)
-      return NextResponse.json({ error: "This sale is already fully paid" }, { status: 400 })
+      if (!sale) {
+        const e = new Error("Sale not found") as Error & { status: number }
+        e.status = 404
+        throw e
+      }
 
-    const actualAmount = Math.min(Number(amount), pending)
-    const newAmountReceived = Number(sale.amountReceived) + actualAmount
+      const pending = Number(sale.sellingPrice) - Number(sale.amountReceived)
+      if (pending <= 0) {
+        const e = new Error("This sale is already fully paid") as Error & { status: number }
+        e.status = 400
+        throw e
+      }
 
-    await db.$transaction(async (tx) => {
+      const actualAmount = Math.min(Number(amount), pending)
+      const newAmountReceived = Number(sale.amountReceived) + actualAmount
+
       await tx.sale.update({ where: { id }, data: { amountReceived: newAmountReceived } })
       await tx.salePayment.create({
         data: { saleId: id, amount: actualAmount, recordedBy: user.id, notes: notes?.trim() || null },
       })
+
+      return { newAmountReceived }
     })
 
-    return NextResponse.json({ success: true, newAmountReceived })
-  } catch (err) {
+    return NextResponse.json({ success: true, newAmountReceived: result.newAmountReceived })
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 404 || status === 400) {
+      return NextResponse.json({ error: (err as Error).message }, { status })
+    }
     console.error("[POST /api/sales/[id]/payments]", err)
     return NextResponse.json({ error: "Failed to record payment" }, { status: 500 })
   }

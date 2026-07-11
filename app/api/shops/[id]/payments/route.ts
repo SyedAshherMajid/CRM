@@ -18,26 +18,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const shop = await db.shopBuyer.findUnique({ where: { id }, select: { id: true } })
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    // Get all pending sales for this shop, oldest first
-    const pendingSales = await db.sale.findMany({
-      where: {
-        shopBuyerId: id,
-        saleType: "shop",
-      },
-      orderBy: { soldAt: "asc" },
-      select: { id: true, sellingPrice: true, amountReceived: true },
-    })
-
-    const totalOutstanding = pendingSales.reduce(
-      (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
-      0
-    )
-    if (totalOutstanding <= 0)
-      return NextResponse.json({ error: "No outstanding balance for this shop" }, { status: 400 })
-
-    let remaining = Math.min(Number(amount), totalOutstanding)
-
+    // Fetch pending sales AND distribute payment inside a single transaction so two
+    // concurrent bulk payments cannot both read the same amountReceived values and
+    // overwrite each other.
     await db.$transaction(async (tx) => {
+      const pendingSales = await tx.sale.findMany({
+        where: { shopBuyerId: id, saleType: "shop" },
+        orderBy: { soldAt: "asc" },
+        select: { id: true, sellingPrice: true, amountReceived: true },
+      })
+
+      const totalOutstanding = pendingSales.reduce(
+        (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
+        0
+      )
+
+      if (totalOutstanding <= 0) {
+        const e = new Error("No outstanding balance for this shop") as Error & { status: number }
+        e.status = 400
+        throw e
+      }
+
+      let remaining = Math.min(Number(amount), totalOutstanding)
+
       for (const sale of pendingSales) {
         if (remaining <= 0) break
         const pending = Number(sale.sellingPrice) - Number(sale.amountReceived)
@@ -57,7 +60,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
 
     return NextResponse.json({ success: true })
-  } catch (err) {
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 400) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 400 })
+    }
     console.error("[POST /api/shops/[id]/payments]", err)
     return NextResponse.json({ error: "Failed to record payment" }, { status: 500 })
   }

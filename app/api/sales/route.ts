@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       if (!phone || phone.status !== "available")
         return NextResponse.json({ error: "Phone is not available for sale" }, { status: 400 })
 
-      const received = Number(amountReceived) || 0
+      const received = Math.min(Number(amountReceived) || 0, Number(sellingPrice))
 
       const sale = await db.$transaction(async (tx) => {
         const newSale = await tx.sale.create({
