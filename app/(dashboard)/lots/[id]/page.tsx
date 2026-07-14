@@ -121,8 +121,6 @@ export default function LotDetailPage() {
   }
 
   async function handleDeleteLot() {
-    if (!confirm(`Delete lot "${lot?.name}" and all associated data?`)) return
-
     setDeleting(true)
     try {
       const res = await fetch(`/api/lots/${id}`, { method: "DELETE" })
@@ -281,7 +279,7 @@ export default function LotDetailPage() {
             <p className="text-center text-gray-400 text-sm py-8">No phones in this category</p>
           ) : (
             filteredPhones.map((phone) => (
-              <Card key={phone.id} className="shadow-sm">
+              <Card key={phone.id} className="shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/inventory/${phone.id}`)}>
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">

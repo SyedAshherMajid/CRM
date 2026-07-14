@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { Plus, Trash2, Loader2, Receipt, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Trash2, Loader2, Receipt, ChevronLeft, ChevronRight, Pencil } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { get1010MonthRange, format1010MonthLabel } from "@/lib/utils/month-cycle"
 import { cn } from "@/lib/utils"
@@ -70,6 +70,15 @@ export default function ExpensesPage() {
   // Delete
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Edit
+  const [editExpense, setEditExpense] = useState<Expense | null>(null)
+  const [editCategory, setEditCategory] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editAmount, setEditAmount] = useState("")
+  const [editDate, setEditDate] = useState("")
+  const [editNotes, setEditNotes] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
 
   const selectedMonth = months[monthIdx]
 
@@ -130,6 +139,45 @@ export default function ExpensesPage() {
       toast.error("Failed to delete expense")
     } finally {
       setDeleting(false)
+    }
+  }
+
+  function openEdit(expense: Expense) {
+    setEditExpense(expense)
+    setEditCategory(expense.category)
+    setEditDescription(expense.description)
+    setEditAmount(String(expense.amount))
+    setEditDate(expense.expenseDate.split("T")[0])
+    setEditNotes(expense.notes ?? "")
+  }
+
+  async function handleEdit() {
+    if (!editExpense) return
+    if (!editCategory) { toast.error("Select a category"); return }
+    if (!editDescription.trim()) { toast.error("Description is required"); return }
+    if (!editAmount || Number(editAmount) <= 0) { toast.error("Enter a valid amount"); return }
+
+    setEditSaving(true)
+    try {
+      const res = await fetch(`/api/expenses/${editExpense.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: Number(editAmount),
+          category: editCategory,
+          description: editDescription.trim(),
+          expenseDate: editDate,
+          notes: editNotes.trim() || null,
+        }),
+      })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error) }
+      toast.success("Expense updated")
+      setEditExpense(null)
+      load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update expense")
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -236,6 +284,13 @@ export default function ExpensesPage() {
                         <p className="font-bold text-gray-900">{formatPKR(expense.amount)}</p>
                         <Button
                           variant="ghost" size="icon"
+                          className="h-8 w-8 text-gray-400 hover:text-gray-700"
+                          onClick={() => openEdit(expense)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
                           className="h-8 w-8 text-red-400 hover:text-red-600"
                           onClick={() => setDeleteId(expense.id)}
                         >
@@ -337,6 +392,93 @@ export default function ExpensesPage() {
             <Button onClick={handleAdd} disabled={saving} className="flex-1 h-11">
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Save Expense
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={!!editExpense} onOpenChange={(v) => { if (!v) setEditExpense(null) }}>
+        <DialogContent className="max-w-sm w-full flex flex-col max-h-[92vh] p-0 gap-0">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+            <DialogTitle>Edit Expense</DialogTitle>
+            <DialogDescription className="text-xs">Update expense details</DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+            <div className="space-y-1.5">
+              <Label>Category *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setEditCategory(c.value)}
+                    className={cn(
+                      "py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left",
+                      editCategory === c.value
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Description *</Label>
+              <Input
+                placeholder="e.g. July rent payment"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="h-11"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Amount (PKR) *</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 25000"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="h-11"
+                  min={1}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date *</Label>
+                <Input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+              <Textarea
+                placeholder="Any extra details..."
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                className="resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+            <Button variant="outline" onClick={() => setEditExpense(null)} disabled={editSaving} className="flex-1 h-11">
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editSaving} className="flex-1 h-11">
+              {editSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Changes
             </Button>
           </div>
         </DialogContent>

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { ArrowLeft, Copy, Pencil, AlertTriangle, RotateCcw, CheckCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, Copy, Pencil, AlertTriangle, RotateCcw, CheckCircle, Loader2, Trash2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { cn } from "@/lib/utils"
 import { CONDITION_OPTIONS } from "@/lib/phone-models"
@@ -64,8 +64,13 @@ export default function PhoneDetailPage() {
   const [editColor, setEditColor] = useState("")
   const [editCondition, setEditCondition] = useState("")
   const [editBattery, setEditBattery] = useState("")
+  const [editCostPrice, setEditCostPrice] = useState("")
   const [editNotes, setEditNotes] = useState("")
   const [saving, setSaving] = useState(false)
+
+  // Delete dialog state
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletingPhone, setDeletingPhone] = useState(false)
 
   // Status change dialog state
   const [statusDialog, setStatusDialog] = useState<"defective" | "returned" | "available" | null>(null)
@@ -87,11 +92,13 @@ export default function PhoneDetailPage() {
     setEditColor(phone.color)
     setEditCondition(phone.condition)
     setEditBattery(phone.batteryHealth ? String(phone.batteryHealth) : "")
+    setEditCostPrice(phone.costPrice)
     setEditNotes(phone.notes ?? "")
     setEditOpen(true)
   }
 
   async function handleEdit() {
+    if (editCostPrice && Number(editCostPrice) <= 0) { toast.error("Cost price must be greater than 0"); return }
     setSaving(true)
     const res = await fetch(`/api/phones/${id}`, {
       method: "PATCH",
@@ -100,6 +107,7 @@ export default function PhoneDetailPage() {
         color: editColor,
         condition: editCondition,
         batteryHealth: editBattery ? Number(editBattery) : null,
+        costPrice: editCostPrice ? Number(editCostPrice) : undefined,
         notes: editNotes || null,
       }),
     })
@@ -141,6 +149,19 @@ export default function PhoneDetailPage() {
       setStatusNotes("")
     }
     setChangingStatus(false)
+  }
+
+  async function handleDeletePhone() {
+    setDeletingPhone(true)
+    const res = await fetch(`/api/phones/${id}`, { method: "DELETE" })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to delete phone")
+      setDeletingPhone(false)
+    } else {
+      toast.success("Phone deleted")
+      router.push("/inventory")
+    }
   }
 
   function copyIMEI() {
@@ -284,6 +305,15 @@ export default function PhoneDetailPage() {
           <Button variant="outline" onClick={openEdit} className="w-full h-11">
             <Pencil className="w-4 h-4 mr-2" /> Edit Details
           </Button>
+          {!phone.sale && (
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(true)}
+              className="w-full h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Delete Phone
+            </Button>
+          )}
           {phone.status === "available" && (
             <>
               <Button
@@ -349,6 +379,17 @@ export default function PhoneDetailPage() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cost Price (PKR)</Label>
+              <Input
+                type="number"
+                min={1}
+                placeholder="e.g. 85000"
+                value={editCostPrice}
+                onChange={(e) => setEditCostPrice(e.target.value)}
+                className="h-11"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Battery Health % <span className="text-gray-400 font-normal">(optional)</span></Label>
@@ -421,6 +462,28 @@ export default function PhoneDetailPage() {
             >
               {changingStatus ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Delete phone dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Phone?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 px-1">
+            This will permanently delete <span className="font-semibold">{phone.model}</span> (IMEI: {phone.imei}) from the system. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} className="h-11">Cancel</Button>
+            <Button
+              onClick={handleDeletePhone}
+              disabled={deletingPhone}
+              className="h-11 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingPhone ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

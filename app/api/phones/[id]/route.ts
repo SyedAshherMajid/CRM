@@ -70,6 +70,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if ("batteryHealth" in body) data.batteryHealth = body.batteryHealth || null
     if ("notes" in body) data.notes = body.notes?.trim() || null
     if (body.status !== undefined) data.status = body.status as PhoneStatus
+    if (body.costPrice !== undefined) data.costPrice = Number(body.costPrice)
 
     const updated = await db.phone.update({ where: { id }, data })
 
@@ -84,5 +85,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch (err) {
     console.error("[PATCH /api/phones/[id]]", err)
     return NextResponse.json({ error: "Failed to update phone" }, { status: 500 })
+  }
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { id } = await params
+
+    const phone = await db.phone.findUnique({
+      where: { id },
+      select: { id: true, sale: { select: { id: true } } },
+    })
+
+    if (!phone) return NextResponse.json({ error: "Phone not found" }, { status: 404 })
+    if (phone.sale) return NextResponse.json({ error: "Cannot delete a phone that has a sale record" }, { status: 400 })
+
+    await db.phone.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("[DELETE /api/phones/[id]]", err)
+    return NextResponse.json({ error: "Failed to delete phone" }, { status: 500 })
   }
 }
