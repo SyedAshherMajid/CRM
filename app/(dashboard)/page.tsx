@@ -15,6 +15,8 @@ import {
   ShoppingCart,
   Box,
   Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { cn } from "@/lib/utils"
@@ -28,6 +30,9 @@ interface DashboardData {
     profitThisMonth: number
     revenueThisMonth: number
     costThisMonth: number
+    availableStockValue: number
+    customerPending: number
+    totalCapital: number
   }
   activity: Array<{
     id: string
@@ -41,6 +46,7 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [capitalExpanded, setCapitalExpanded] = useState(false)
 
   useEffect(() => {
     async function loadDashboard() {
@@ -169,6 +175,83 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Total Capital Card */}
+      {loading ? (
+        <Skeleton className="h-20 w-full rounded-lg" />
+      ) : (
+        <Card
+          className="border-gray-200 shadow-sm cursor-pointer select-none"
+          onClick={() => setCapitalExpanded((v) => !v)}
+        >
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Capital</p>
+                <p className="text-2xl font-bold text-gray-900 mt-0.5">
+                  {formatPKR(data?.stats.totalCapital || 0)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 hidden sm:block">tap to {capitalExpanded ? "hide" : "see"} breakdown</span>
+                {capitalExpanded
+                  ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                  : <ChevronDown className="w-5 h-5 text-gray-400" />
+                }
+              </div>
+            </div>
+
+            {capitalExpanded && (
+              <div className="mt-4 pt-4 border-t border-gray-100 space-y-0">
+                {[
+                  {
+                    label: "Stock Value",
+                    sub: `${data?.stats.availablePhones} available phones at cost`,
+                    value: data?.stats.availableStockValue || 0,
+                    sign: "+",
+                    color: "text-green-600",
+                  },
+                  {
+                    label: "Shops Owe You",
+                    sub: "pending payments from shop buyers",
+                    value: data?.stats.pendingFromShops || 0,
+                    sign: "+",
+                    color: "text-green-600",
+                  },
+                  {
+                    label: "Customers Owe You",
+                    sub: "pending from customer sales",
+                    value: data?.stats.customerPending || 0,
+                    sign: "+",
+                    color: "text-green-600",
+                  },
+                  {
+                    label: "You Owe Suppliers",
+                    sub: "remaining balance to suppliers",
+                    value: data?.stats.owedToSuppliers || 0,
+                    sign: "−",
+                    color: "text-red-500",
+                  },
+                ].map(({ label, sub, value, sign, color }) => (
+                  <div key={label} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                    </div>
+                    <p className={`text-sm font-semibold ${color} flex-shrink-0 ml-4`}>
+                      {sign} {formatPKR(value)}
+                    </p>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-3 mt-1">
+                  <p className="text-sm font-bold text-gray-900">Total Capital</p>
+                  <p className="text-sm font-bold text-gray-900">{formatPKR(data?.stats.totalCapital || 0)}</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -12,7 +12,7 @@ export async function GET() {
     const { start: monthStart, end: monthEnd } = get1010MonthRange()
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-    // All 9 queries fired in parallel — total wait = slowest single query, not sum of all
+    // All 12 queries fired in parallel — total wait = slowest single query, not sum of all
     const [
       availableCount,
       soldThisMonth,
@@ -24,6 +24,8 @@ export async function GET() {
       recentPhones,
       recentSales,
       recentPayments,
+      availableStockAgg,
+      customerSaleAgg,
     ] = await Promise.all([
       // 1. Available phones count
       db.phone.count({
@@ -113,6 +115,18 @@ export async function GET() {
         orderBy: { receivedAt: "desc" },
         take: 5,
       }),
+
+      // 11. Total cost of available phones (stock value)
+      db.phone.aggregate({
+        where: { status: "available" },
+        _sum: { costPrice: true },
+      }),
+
+      // 12. Pending from customer sales
+      db.sale.aggregate({
+        where: { saleType: "customer" },
+        _sum: { sellingPrice: true, amountReceived: true },
+      }),
     ])
 
     // Calculate profit from the results
@@ -130,6 +144,12 @@ export async function GET() {
     const totalPendingFromShops =
       (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0) +
       (shopPriorBalOwing._sum.amount?.toNumber() || 0) - (shopPriorBalOwing._sum.amountPaid?.toNumber() || 0)
+
+    const availableStockValue = availableStockAgg._sum.costPrice?.toNumber() ?? 0
+    const customerPending =
+      (customerSaleAgg._sum.sellingPrice?.toNumber() ?? 0) -
+      (customerSaleAgg._sum.amountReceived?.toNumber() ?? 0)
+    const totalCapital = availableStockValue + totalPendingFromShops + customerPending - totalOwedToSuppliers
 
     // Merge and sort activity feed
     const activity = [
@@ -167,6 +187,9 @@ export async function GET() {
         profitThisMonth,
         revenueThisMonth,
         costThisMonth,
+        availableStockValue,
+        customerPending,
+        totalCapital,
       },
       activity,
     })
