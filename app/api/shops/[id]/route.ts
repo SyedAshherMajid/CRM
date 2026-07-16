@@ -10,8 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { id } = await params
 
-    // All 3 queries run in parallel
-    const [shop, outstandingAgg, allPayments] = await Promise.all([
+    // All 4 queries run in parallel
+    const [shop, outstandingAgg, allPayments, priorBalances] = await Promise.all([
       // Shop info + sales list (capped at 100 most recent)
       db.shopBuyer.findUnique({
         where: { id },
@@ -46,17 +46,37 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         take: 100,
         select: { id: true, amount: true, receivedAt: true, notes: true },
       }),
+
+      // Prior balances (historical debts not linked to specific phones)
+      db.shopPriorBalance.findMany({
+        where: { shopBuyerId: id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, amount: true, amountPaid: true, description: true, createdAt: true },
+      }),
     ])
 
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    const outstanding =
+    const saleOutstanding =
       (outstandingAgg._sum.sellingPrice?.toNumber() ?? 0) -
       (outstandingAgg._sum.amountReceived?.toNumber() ?? 0)
+    const priorBalanceOutstanding = priorBalances.reduce(
+      (sum, pb) => sum + Number(pb.amount) - Number(pb.amountPaid),
+      0
+    )
+    const outstanding = saleOutstanding + priorBalanceOutstanding
 
     return NextResponse.json({
       ...shop,
       outstanding,
+      saleOutstanding,
+      priorBalances: priorBalances.map((pb) => ({
+        id: pb.id,
+        amount: Number(pb.amount),
+        amountPaid: Number(pb.amountPaid),
+        description: pb.description,
+        createdAt: pb.createdAt,
+      })),
       allPayments: allPayments.map((p) => ({ ...p, amount: p.amount.toString() })),
       sales: shop.sales.map((s) => ({
         ...s,

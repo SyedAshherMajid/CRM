@@ -14,13 +14,14 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now()) @map("created_at")
 
-  lotsCreated      PurchaseLot[]
-  lotPayments      LotPayment[]
-  phonesAdded      Phone[]
-  salesMade        Sale[]
-  salePayments     SalePayment[]
-  supplierPayments SupplierPayment[]
-  expenses         Expense[]
+  lotsCreated       PurchaseLot[]
+  lotPayments       LotPayment[]
+  phonesAdded       Phone[]
+  salesMade         Sale[]
+  salePayments      SalePayment[]
+  supplierPayments  SupplierPayment[]
+  expenses          Expense[]
+  shopPriorBalances ShopPriorBalance[]
 
   @@map("users")
 }
@@ -148,9 +149,26 @@ model ShopBuyer {
   notes     String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  sales Sale[]
+  sales         Sale[]
+  priorBalances ShopPriorBalance[]
 
   @@map("shop_buyers")
+}
+
+model ShopPriorBalance {
+  id          String   @id @default(uuid())
+  shopBuyerId String   @map("shop_buyer_id")
+  amount      Decimal  @db.Decimal(12, 2)
+  amountPaid  Decimal  @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  description String
+  recordedBy  String   @map("recorded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  shop     ShopBuyer @relation(fields: [shopBuyerId], references: [id], onDelete: Cascade)
+  recorder User      @relation(fields: [recordedBy], references: [id])
+
+  @@index([shopBuyerId])
+  @@map("shop_prior_balances")
 }
 
 enum SaleType {

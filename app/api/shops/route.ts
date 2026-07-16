@@ -7,8 +7,8 @@ export async function GET() {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Parallel: shop rows + sale aggregates per shop in one raw SQL query
-    const [shops, saleStats] = await Promise.all([
+    // Parallel: shop rows + sale aggregates + prior balance aggregates
+    const [shops, saleStats, priorBalStats] = await Promise.all([
       db.shopBuyer.findMany({ orderBy: { createdAt: "desc" } }),
       db.$queryRaw<Array<{
         shop_buyer_id: string
@@ -29,16 +29,25 @@ export async function GET() {
         WHERE shop_buyer_id IS NOT NULL
         GROUP BY shop_buyer_id
       `,
+      db.shopPriorBalance.groupBy({
+        by: ["shopBuyerId"],
+        _sum: { amount: true, amountPaid: true },
+      }),
     ])
 
     const statsMap = new Map(saleStats.map((s) => [s.shop_buyer_id, s]))
+    const priorBalMap = new Map(
+      priorBalStats.map((p) => [
+        p.shopBuyerId,
+        (p._sum.amount?.toNumber() ?? 0) - (p._sum.amountPaid?.toNumber() ?? 0),
+      ])
+    )
 
     return NextResponse.json(
       shops.map((shop) => {
         const stats = statsMap.get(shop.id)
-        const outstanding = stats
-          ? Number(stats.total_selling) - Number(stats.total_received)
-          : 0
+        const saleOutstanding = stats ? Number(stats.total_selling) - Number(stats.total_received) : 0
+        const outstanding = saleOutstanding + (priorBalMap.get(shop.id) ?? 0)
         return {
           id: shop.id,
           name: shop.name,

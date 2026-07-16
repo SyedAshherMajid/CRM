@@ -6,7 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -24,9 +24,14 @@ interface SaleItem {
   phone: { id: string; brand: string; model: string; storage: string; color: string; imei: string; costPrice: string; lot: { id: string; name: string } }
   payments: SalePaymentItem[]
 }
+interface PriorBalance {
+  id: string; amount: number; amountPaid: number; description: string; createdAt: string
+}
 interface Shop {
   id: string; name: string; phone: string | null; address: string | null; notes: string | null
-  outstanding: number; allPayments: SalePaymentItem[]; sales: SaleItem[]
+  outstanding: number; saleOutstanding: number
+  allPayments: SalePaymentItem[]; sales: SaleItem[]
+  priorBalances: PriorBalance[]
 }
 
 export default function ShopDetailPage() {
@@ -59,6 +64,17 @@ export default function ShopDetailPage() {
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // Add Prior Balance dialog
+  const [addBalanceOpen, setAddBalanceOpen] = useState(false)
+  const [balanceAmount, setBalanceAmount] = useState("")
+  const [balanceDesc, setBalanceDesc] = useState("")
+  const [addingBalance, setAddingBalance] = useState(false)
+
+  // Receive payment for a prior balance dialog
+  const [receiveBalanceDialog, setReceiveBalanceDialog] = useState<PriorBalance | null>(null)
+  const [receiveBalanceAmount, setReceiveBalanceAmount] = useState("")
+  const [receivingBalance, setReceivingBalance] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/shops/${id}`)
@@ -129,6 +145,57 @@ export default function ShopDetailPage() {
     }
   }
 
+  async function handleAddPriorBalance() {
+    if (!balanceAmount || Number(balanceAmount) <= 0) { toast.error("Enter a valid amount"); return }
+    if (!balanceDesc.trim()) { toast.error("Description is required"); return }
+    setAddingBalance(true)
+    const res = await fetch(`/api/shops/${id}/prior-balances`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: Number(balanceAmount), description: balanceDesc.trim() }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to add balance")
+    } else {
+      toast.success("Prior balance added")
+      setAddBalanceOpen(false)
+      setBalanceAmount(""); setBalanceDesc("")
+      load()
+    }
+    setAddingBalance(false)
+  }
+
+  async function handleReceivePriorBalance() {
+    if (!receiveBalanceDialog || !receiveBalanceAmount || Number(receiveBalanceAmount) <= 0) return
+    setReceivingBalance(true)
+    const res = await fetch(`/api/shops/${id}/prior-balances/${receiveBalanceDialog.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: Number(receiveBalanceAmount) }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to record payment")
+    } else {
+      toast.success("Payment recorded")
+      setReceiveBalanceDialog(null); setReceiveBalanceAmount("")
+      load()
+    }
+    setReceivingBalance(false)
+  }
+
+  async function handleDeletePriorBalance(balanceId: string) {
+    const res = await fetch(`/api/shops/${id}/prior-balances/${balanceId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to delete")
+    } else {
+      toast.success("Balance removed")
+      load()
+    }
+  }
+
   async function handleSalePayment() {
     if (!salePayDialog || !salePayAmount || Number(salePayAmount) <= 0) return
     setSalePaySaving(true)
@@ -191,7 +258,7 @@ export default function ShopDetailPage() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Owes You</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Owes You</p>
               <p className={cn(
                 "text-2xl font-bold mt-1",
                 shop.outstanding > 0 ? "text-orange-600" : "text-green-600"
@@ -202,7 +269,7 @@ export default function ShopDetailPage() {
                 <p className="text-xs text-gray-400 mt-1">{pendingCount} sale{pendingCount !== 1 ? "s" : ""} with pending payment</p>
               )}
             </div>
-            {shop.outstanding > 0 && (
+            {shop.saleOutstanding > 0 && (
               <Button onClick={() => { setPayAmount(""); setPayNotes(""); setPayDialog(true) }} className="h-9">
                 <Plus className="w-3.5 h-3.5 mr-1" /> Record Payment
               </Button>
@@ -222,6 +289,71 @@ export default function ShopDetailPage() {
                   <span className="font-medium text-gray-800">{formatPKR(Number(p.amount))}</span>
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Prior Balances section */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Prior Balances</CardTitle>
+              <p className="text-xs text-gray-400 mt-0.5">Outstanding amounts not linked to specific phones</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => { setBalanceAmount(""); setBalanceDesc(""); setAddBalanceOpen(true) }} className="h-8">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {shop.priorBalances.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No prior balances recorded</p>
+          ) : (
+            <div className="space-y-3">
+              {shop.priorBalances.map((pb) => {
+                const remaining = pb.amount - pb.amountPaid
+                return (
+                  <div key={pb.id} className="border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{pb.description}</p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-xs text-gray-500">Total: {formatPKR(pb.amount)}</span>
+                          {pb.amountPaid > 0 && <span className="text-xs text-green-600">Paid: {formatPKR(pb.amountPaid)}</span>}
+                          <span className={cn("text-xs font-semibold", remaining > 0 ? "text-orange-600" : "text-green-600")}>
+                            {remaining > 0 ? `Remaining: ${formatPKR(remaining)}` : "Settled ✓"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 mt-1">
+                          {new Date(pb.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        {remaining > 0 && (
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => { setReceiveBalanceDialog(pb); setReceiveBalanceAmount("") }}
+                          >
+                            Receive
+                          </Button>
+                        )}
+                        {pb.amountPaid === 0 && (
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleDeletePriorBalance(pb.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -303,7 +435,7 @@ export default function ShopDetailPage() {
               <Label>Amount (PKR) *</Label>
               <Input
                 type="number" min={1}
-                placeholder={`Max: ${formatPKR(shop.outstanding)}`}
+                placeholder={`Max: ${formatPKR(shop.saleOutstanding)}`}
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
                 className="h-11 text-base"
@@ -363,6 +495,87 @@ export default function ShopDetailPage() {
             <Button variant="outline" onClick={() => setSalePayDialog(null)}>Cancel</Button>
             <Button onClick={handleSalePayment} disabled={salePaySaving}>
               {salePaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Prior Balance dialog */}
+      <Dialog open={addBalanceOpen} onOpenChange={(v) => { if (!v) setAddBalanceOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Prior Balance</DialogTitle>
+            <DialogDescription className="text-xs">
+              Record an outstanding amount this shop owes you from before the software was set up.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Amount (PKR) *</Label>
+              <Input
+                type="number" min={1}
+                placeholder="e.g. 50000"
+                value={balanceAmount}
+                onChange={(e) => setBalanceAmount(e.target.value)}
+                className="h-11 text-base"
+              />
+              {balanceAmount && <p className="text-xs text-gray-400">{formatPKR(Number(balanceAmount))}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description / Reason *</Label>
+              <Input
+                placeholder="e.g. 15 phones sold in June 2026"
+                value={balanceDesc}
+                onChange={(e) => setBalanceDesc(e.target.value)}
+                className="h-11"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddBalanceOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddPriorBalance} disabled={addingBalance}>
+              {addingBalance ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Add Balance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive payment for a prior balance dialog */}
+      <Dialog open={receiveBalanceDialog !== null} onOpenChange={(v) => { if (!v) setReceiveBalanceDialog(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Receive Payment</DialogTitle>
+            <DialogDescription className="text-xs">Prior balance payment</DialogDescription>
+          </DialogHeader>
+          {receiveBalanceDialog && (
+            <div className="space-y-3 py-1">
+              <Card className="bg-gray-50 border-0">
+                <CardContent className="p-3 text-sm">
+                  <p className="font-medium">{receiveBalanceDialog.description}</p>
+                  <p className="text-gray-500 mt-0.5">
+                    Remaining: {formatPKR(receiveBalanceDialog.amount - receiveBalanceDialog.amountPaid)}
+                  </p>
+                </CardContent>
+              </Card>
+              <div className="space-y-1.5">
+                <Label>Amount Received (PKR) *</Label>
+                <Input
+                  type="number" min={1}
+                  placeholder={`Max: ${formatPKR(receiveBalanceDialog.amount - receiveBalanceDialog.amountPaid)}`}
+                  value={receiveBalanceAmount}
+                  onChange={(e) => setReceiveBalanceAmount(e.target.value)}
+                  className="h-11 text-base"
+                />
+                {receiveBalanceAmount && <p className="text-xs text-gray-400">{formatPKR(Number(receiveBalanceAmount))}</p>}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceiveBalanceDialog(null)}>Cancel</Button>
+            <Button onClick={handleReceivePriorBalance} disabled={receivingBalance}>
+              {receivingBalance ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
             </Button>
           </DialogFooter>

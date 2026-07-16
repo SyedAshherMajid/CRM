@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 
     const dateFilter = { gte: start, lte: end }
 
-    // 9 queries fired in parallel
+    // 10 queries fired in parallel
     const [
       phonesAgg,
       salesAgg,
@@ -40,6 +40,7 @@ export async function GET(req: Request) {
       expensesRaw,
       purchasedPhonesRaw,
       lotsWithSuppliers,
+      priorBalOwing,
     ] = await Promise.all([
       // 1. Phone purchase stats
       db.phone.aggregate({
@@ -127,6 +128,11 @@ export async function GET(req: Request) {
           supplier: { select: { id: true, name: true } },
         },
       }),
+
+      // 10. Prior balance outstanding from shops (all-time, not period-filtered)
+      db.shopPriorBalance.aggregate({
+        _sum: { amount: true, amountPaid: true },
+      }),
     ])
 
     // Compute totals
@@ -213,7 +219,9 @@ export async function GET(req: Request) {
       amountOwed: shop.totalOwed,
       salesCount: shop.salesCount,
     }))
-    const totalPendingFromShops = Array.from(shopMap.values()).reduce((sum, s) => sum + s.totalOwed, 0)
+    const totalPendingFromShops =
+      Array.from(shopMap.values()).reduce((sum, s) => sum + s.totalOwed, 0) +
+      (priorBalOwing._sum.amount?.toNumber() ?? 0) - (priorBalOwing._sum.amountPaid?.toNumber() ?? 0)
 
     // Per-supplier breakdown
     const supplierMap = new Map<

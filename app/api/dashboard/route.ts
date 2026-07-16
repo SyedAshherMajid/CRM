@@ -19,6 +19,7 @@ export async function GET() {
       supplierOwing,
       supplierDirectPayments,
       shopOwing,
+      shopPriorBalOwing,
       salesThisMonth,
       recentPhones,
       recentSales,
@@ -50,7 +51,12 @@ export async function GET() {
         _sum: { sellingPrice: true, amountReceived: true },
       }),
 
-      // 5. Sales this month for profit calculation
+      // 5b. Prior balance outstanding from shops
+      db.shopPriorBalance.aggregate({
+        _sum: { amount: true, amountPaid: true },
+      }),
+
+      // 6. Sales this month for profit calculation
       db.sale.findMany({
         where: { soldAt: { gte: monthStart, lte: monthEnd } },
         select: {
@@ -122,7 +128,8 @@ export async function GET() {
     )
 
     const totalPendingFromShops =
-      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0)
+      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0) +
+      (shopPriorBalOwing._sum.amount?.toNumber() || 0) - (shopPriorBalOwing._sum.amountPaid?.toNumber() || 0)
 
     // Merge and sort activity feed
     const activity = [
