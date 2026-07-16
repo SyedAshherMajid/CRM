@@ -269,7 +269,7 @@ export default function ShopDetailPage() {
                 <p className="text-xs text-gray-400 mt-1">{pendingCount} sale{pendingCount !== 1 ? "s" : ""} with pending payment</p>
               )}
             </div>
-            {shop.saleOutstanding > 0 && (
+            {shop.outstanding > 0 && (
               <Button onClick={() => { setPayAmount(""); setPayNotes(""); setPayDialog(true) }} className="h-9">
                 <Plus className="w-3.5 h-3.5 mr-1" /> Record Payment
               </Button>
@@ -435,7 +435,7 @@ export default function ShopDetailPage() {
               <Label>Amount (PKR) *</Label>
               <Input
                 type="number" min={1}
-                placeholder={`Max: ${formatPKR(shop.saleOutstanding)}`}
+                placeholder={`Max: ${formatPKR(shop.outstanding)}`}
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
                 className="h-11 text-base"
@@ -447,7 +447,7 @@ export default function ShopDetailPage() {
               <Input placeholder="e.g. cash, bank transfer" value={payNotes} onChange={(e) => setPayNotes(e.target.value)} className="h-11" />
             </div>
             <p className="text-xs text-gray-400">
-              Payment will be applied to oldest pending sales first.
+              Prior balances are cleared first, then oldest phone sales.
             </p>
           </div>
           <DialogFooter>

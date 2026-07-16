@@ -18,20 +18,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const shop = await db.shopBuyer.findUnique({ where: { id }, select: { id: true } })
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    // Fetch pending sales AND distribute payment inside a single transaction so two
-    // concurrent bulk payments cannot both read the same amountReceived values and
-    // overwrite each other.
+    // Fetch all outstanding items and distribute payment inside a single transaction
+    // to prevent race conditions from concurrent payments.
+    // Order: prior balances (oldest first), then phone sales (oldest first).
     await db.$transaction(async (tx) => {
-      const pendingSales = await tx.sale.findMany({
-        where: { shopBuyerId: id, saleType: "shop" },
-        orderBy: { soldAt: "asc" },
-        select: { id: true, sellingPrice: true, amountReceived: true },
-      })
+      const [priorBalances, pendingSales] = await Promise.all([
+        tx.shopPriorBalance.findMany({
+          where: { shopBuyerId: id },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, amount: true, amountPaid: true },
+        }),
+        tx.sale.findMany({
+          where: { shopBuyerId: id, saleType: "shop" },
+          orderBy: { soldAt: "asc" },
+          select: { id: true, sellingPrice: true, amountReceived: true },
+        }),
+      ])
 
-      const totalOutstanding = pendingSales.reduce(
+      const priorOutstanding = priorBalances.reduce(
+        (sum, pb) => sum + (Number(pb.amount) - Number(pb.amountPaid)),
+        0
+      )
+      const saleOutstanding = pendingSales.reduce(
         (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
         0
       )
+      const totalOutstanding = priorOutstanding + saleOutstanding
 
       if (totalOutstanding <= 0) {
         const e = new Error("No outstanding balance for this shop") as Error & { status: number }
@@ -41,6 +53,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       let remaining = Math.min(Number(amount), totalOutstanding)
 
+      // Step 1: Clear prior balances first (oldest first)
+      for (const pb of priorBalances) {
+        if (remaining <= 0) break
+        const pbRemaining = Number(pb.amount) - Number(pb.amountPaid)
+        if (pbRemaining <= 0) continue
+
+        const applying = Math.min(remaining, pbRemaining)
+        remaining -= applying
+
+        await tx.shopPriorBalance.update({
+          where: { id: pb.id },
+          data: { amountPaid: Number(pb.amountPaid) + applying },
+        })
+      }
+
+      // Step 2: Apply the rest to phone sales (oldest first)
       for (const sale of pendingSales) {
         if (remaining <= 0) break
         const pending = Number(sale.sellingPrice) - Number(sale.amountReceived)
