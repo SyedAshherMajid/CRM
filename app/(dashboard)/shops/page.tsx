@@ -98,6 +98,7 @@ export default function BuyersPage() {
 function ShopBuyersTab() {
   const [shops, setShops] = useState<ShopListItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
@@ -132,6 +133,10 @@ function ShopBuyersTab() {
     setSaving(false)
   }
 
+  const filteredShops = search.trim()
+    ? shops.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()))
+    : shops
+
   return (
     <>
       <div className="flex items-center justify-between">
@@ -141,16 +146,25 @@ function ShopBuyersTab() {
         </Button>
       </div>
 
+      <Input
+        placeholder="Search shop by name..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="h-11"
+      />
+
       {loading ? (
         Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)
-      ) : shops.length === 0 ? (
+      ) : filteredShops.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <Store className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-          <p className="text-sm font-medium">No shop buyers yet</p>
-          <p className="text-xs mt-1">Add a shop to start recording bulk sales</p>
+          <p className="text-sm font-medium">
+            {search ? "No shops match that name" : "No shop buyers yet"}
+          </p>
+          <p className="text-xs mt-1">{search ? "Try a different search" : "Add a shop to start recording bulk sales"}</p>
         </div>
       ) : (
-        shops.map((shop) => (
+        filteredShops.map((shop) => (
           <Link key={shop.id} href={`/shops/${shop.id}`}>
             <div className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-400 transition-colors">
               <div className="flex items-start justify-between gap-3">
