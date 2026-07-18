@@ -33,6 +33,7 @@ interface DashboardData {
     availableStockValue: number
     customerPending: number
     totalCapital: number
+    directProfitThisMonth: number
   }
   activity: Array<{
     id: string
@@ -178,6 +179,26 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Direct Shop-to-Shop Profit Card */}
+      {loading ? (
+        <Skeleton className="h-16 w-full rounded-lg" />
+      ) : (data?.stats.directProfitThisMonth ?? 0) > 0 ? (
+        <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200 shadow-sm">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-teal-600 uppercase tracking-wide">Direct Profit (This Month)</p>
+                <p className="text-2xl font-bold text-teal-700 mt-0.5">
+                  {formatPKR(data?.stats.directProfitThisMonth || 0)}
+                </p>
+                <p className="text-xs text-teal-500 mt-0.5">shop-to-shop deals</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-teal-300" />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Total Capital Card */}
       {loading ? (

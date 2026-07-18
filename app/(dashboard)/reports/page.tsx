@@ -26,12 +26,15 @@ interface PurchasedPhone { brand: string; model: string; costPrice: number; lotN
 interface SupplierDetail {
   name: string; totalOwed: number; lotsCount: number; lots: Array<{ name: string; owed: number }>
 }
+interface DirectProfitEntry {
+  id: string; amount: number; description: string; profitDate: string; recordedBy: string
+}
 interface ReportData {
   monthLabel: string
   stats: {
     totalPhonesPurchased: number; totalPurchaseCost: number
     totalPhonesSold: number; totalSaleRevenue: number
-    totalProfit: number; netProfit: number; totalExpenses: number; averageProfitPerPhone: number
+    totalProfit: number; totalDirectProfit: number; netProfit: number; totalExpenses: number; averageProfitPerPhone: number
   }
   budgeting: { totalOwedToSuppliers: number; totalPendingFromShops: number; lotsCreated: number; salesCount: number }
   sales: Sale[]
@@ -40,8 +43,9 @@ interface ReportData {
   expenseByCategory: Record<string, number>
   supplierDetails: SupplierDetail[]
   purchasedPhones: PurchasedPhone[]
+  directProfits: DirectProfitEntry[]
 }
-type ModalType = "sold" | "purchased" | "profit" | "expenses" | "suppliers" | "shops" | "netprofit"
+type ModalType = "sold" | "purchased" | "profit" | "expenses" | "suppliers" | "shops" | "netprofit" | "directprofit"
 
 const CATEGORY_COLOR: Record<string, string> = {
   Rent: "bg-blue-100 text-blue-700", Electricity: "bg-yellow-100 text-yellow-700",
@@ -164,6 +168,26 @@ export default function ReportsPage() {
               main={formatPKR(data.stats.totalExpenses)} label="Total Expenses"
               sub={`${data.expenseDetails.length} entries`} />
 
+            {/* Direct Profit — full width */}
+            <div
+              className="col-span-2 md:col-span-4 rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-teal-100 cursor-pointer hover:shadow-md transition select-none"
+              onClick={() => setModal({ open: true, type: "directprofit", title: "Direct Shop-to-Shop Profit" })}
+            >
+              <div className="px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-teal-600 font-medium uppercase tracking-wide">Direct Shop-to-Shop Profit</p>
+                  <p className="text-2xl font-bold text-teal-700 mt-0.5">{formatPKR(data.stats.totalDirectProfit)}</p>
+                  <p className="text-xs text-teal-500 mt-1">
+                    {data.directProfits.length} deal{data.directProfits.length !== 1 ? "s" : ""} · no phone inventory involved
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <TrendingUp className="w-7 h-7 text-teal-300" />
+                  <p className="text-xs text-teal-400">tap for details</p>
+                </div>
+              </div>
+            </div>
+
             {/* Net Profit — full width */}
             <div
               className={cn("col-span-2 md:col-span-4 rounded-xl border cursor-pointer hover:shadow-md transition select-none",
@@ -178,7 +202,9 @@ export default function ReportsPage() {
                   <p className="text-xs text-white/70 font-medium uppercase tracking-wide">Net Profit</p>
                   <p className="text-3xl font-bold text-white mt-0.5">{formatPKR(data.stats.netProfit)}</p>
                   <p className="text-xs text-white/60 mt-1">
-                    Gross {formatPKR(data.stats.totalProfit)} − Expenses {formatPKR(data.stats.totalExpenses)}
+                    Gross {formatPKR(data.stats.totalProfit)}
+                    {data.stats.totalDirectProfit > 0 && ` + Direct ${formatPKR(data.stats.totalDirectProfit)}`}
+                    {` − Expenses ${formatPKR(data.stats.totalExpenses)}`}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -220,6 +246,7 @@ export default function ReportsPage() {
             {data && modal.type === "netprofit" && <NetProfitModal stats={data.stats} byCategory={data.expenseByCategory} />}
             {data && modal.type === "suppliers" && <SuppliersModal suppliers={data.supplierDetails} />}
             {data && modal.type === "shops" && <ShopsModal shops={data.shopDetails} />}
+            {data && modal.type === "directprofit" && <DirectProfitModal entries={data.directProfits} total={data.stats.totalDirectProfit} />}
           </div>
         </DialogContent>
       </Dialog>
@@ -390,9 +417,15 @@ function NetProfitModal({ stats, byCategory }: { stats: ReportData["stats"]; byC
           <span className="font-semibold text-red-600">− {formatPKR(stats.totalSaleRevenue - stats.totalProfit)}</span>
         </div>
         <div className="flex justify-between py-2 border-b border-gray-200 font-medium">
-          <span className="text-gray-700">Gross Profit</span>
+          <span className="text-gray-700">Gross Profit (Phones)</span>
           <span className={cn("font-bold", stats.totalProfit >= 0 ? "text-green-700" : "text-red-700")}>{formatPKR(stats.totalProfit)}</span>
         </div>
+        {stats.totalDirectProfit > 0 && (
+          <div className="flex justify-between py-2 border-b border-gray-200 font-medium">
+            <span className="text-teal-700 flex items-center gap-1.5">+ Direct Shop-to-Shop Profit</span>
+            <span className="font-bold text-teal-700">+ {formatPKR(stats.totalDirectProfit)}</span>
+          </div>
+        )}
         {Object.entries(byCategory).sort((a,b)=>b[1]-a[1]).map(([cat,amt]) => (
           <div key={cat} className="flex justify-between py-1.5 border-b border-gray-100">
             <span className="flex items-center gap-2"><Minus className="w-3 h-3 text-red-400" /><span className="text-gray-600">{cat}</span></span>
@@ -408,6 +441,27 @@ function NetProfitModal({ stats, byCategory }: { stats: ReportData["stats"]; byC
           Expenses are {Math.round((stats.totalExpenses / Math.max(stats.totalSaleRevenue, 1)) * 100)}% of revenue
         </p>
       )}
+    </div>
+  )
+}
+
+function DirectProfitModal({ entries, total }: { entries: DirectProfitEntry[]; total: number }) {
+  if (!entries.length) return <Empty text="No direct profit entries this period" />
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between text-sm font-semibold border-b pb-2 text-gray-700">
+        <span>{entries.length} deal{entries.length !== 1 ? "s" : ""}</span>
+        <span className="text-teal-700">Total: {formatPKR(total)}</span>
+      </div>
+      {entries.map((e) => (
+        <div key={e.id} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0">
+          <div>
+            <p className="text-sm font-medium text-gray-900">{e.description}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{e.profitDate} · by {e.recordedBy}</p>
+          </div>
+          <p className="text-sm font-bold text-teal-700 ml-3 flex-shrink-0">{formatPKR(e.amount)}</p>
+        </div>
+      ))}
     </div>
   )
 }

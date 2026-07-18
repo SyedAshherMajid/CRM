@@ -26,6 +26,7 @@ export async function GET() {
       recentPayments,
       availableStockAgg,
       customerSaleAgg,
+      directProfitAgg,
     ] = await Promise.all([
       // 1. Available phones count
       db.phone.count({
@@ -127,6 +128,12 @@ export async function GET() {
         where: { saleType: "customer" },
         _sum: { sellingPrice: true, amountReceived: true },
       }),
+
+      // 13. Direct profit this month
+      db.directProfit.aggregate({
+        where: { profitDate: { gte: monthStart, lte: monthEnd } },
+        _sum: { amount: true },
+      }),
     ])
 
     // Calculate profit from the results
@@ -150,6 +157,7 @@ export async function GET() {
       (customerSaleAgg._sum.sellingPrice?.toNumber() ?? 0) -
       (customerSaleAgg._sum.amountReceived?.toNumber() ?? 0)
     const totalCapital = availableStockValue + totalPendingFromShops + customerPending - totalOwedToSuppliers
+    const directProfitThisMonth = directProfitAgg._sum.amount?.toNumber() ?? 0
 
     // Merge and sort activity feed
     const activity = [
@@ -190,6 +198,7 @@ export async function GET() {
         availableStockValue,
         customerPending,
         totalCapital,
+        directProfitThisMonth,
       },
       activity,
     })

@@ -41,6 +41,7 @@ export async function GET(req: Request) {
       purchasedPhonesRaw,
       lotsWithSuppliers,
       priorBalOwing,
+      directProfitsRaw,
     ] = await Promise.all([
       // 1. Phone purchase stats
       db.phone.aggregate({
@@ -133,6 +134,19 @@ export async function GET(req: Request) {
       db.shopPriorBalance.aggregate({
         _sum: { amount: true, amountPaid: true },
       }),
+
+      // 11. Direct profits in period
+      db.directProfit.findMany({
+        where: { profitDate: dateFilter },
+        orderBy: { profitDate: "desc" },
+        select: {
+          id: true,
+          amount: true,
+          description: true,
+          profitDate: true,
+          recorder: { select: { name: true } },
+        },
+      }),
     ])
 
     // Compute totals
@@ -148,9 +162,21 @@ export async function GET(req: Request) {
     const totalOwedToSuppliers =
       Number(lotsAgg._sum.totalAmount ?? 0) - Number(lotsAgg._sum.amountPaid ?? 0)
 
+    // Direct profits
+    const totalDirectProfit = directProfitsRaw.reduce((sum, d) => sum + Number(d.amount), 0)
+    const directProfits = directProfitsRaw.map((d) => ({
+      id: d.id,
+      amount: Number(d.amount),
+      description: d.description,
+      profitDate: new Date(d.profitDate).toLocaleDateString("en-PK", {
+        month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Karachi",
+      }),
+      recordedBy: d.recorder.name,
+    }))
+
     // Expenses
     const totalExpenses = expensesRaw.reduce((sum, e) => sum + Number(e.amount), 0)
-    const netProfit = totalProfit - totalExpenses
+    const netProfit = totalProfit + totalDirectProfit - totalExpenses
 
     const expenseDetails = expensesRaw.map((e) => ({
       id: e.id,
@@ -250,6 +276,7 @@ export async function GET(req: Request) {
         totalPhonesSold,
         totalSaleRevenue,
         totalProfit,
+        totalDirectProfit,
         netProfit,
         totalExpenses,
         averageProfitPerPhone,
@@ -266,6 +293,7 @@ export async function GET(req: Request) {
       expenseByCategory,
       supplierDetails,
       purchasedPhones,
+      directProfits,
     })
 
     response.headers.set("Cache-Control", "private, max-age=0, stale-while-revalidate=60")

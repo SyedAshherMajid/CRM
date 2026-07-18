@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { Search, Plus, Trash2, ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
+import { Search, Plus, Trash2, ArrowLeft, ArrowRight, Check, Loader2, TrendingUp, Calendar } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
@@ -655,9 +655,162 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
   return null
 }
 
+/* ─── Direct Profit Tab ─── */
+interface DirectProfitEntry {
+  id: string; amount: number; description: string; profitDate: string; createdAt: string; recordedBy: string
+}
+
+function todayPKT() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" })
+}
+
+function DirectProfitTab() {
+  const [entries, setEntries] = useState<DirectProfitEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [description, setDescription] = useState("")
+  const [profitDate, setProfitDate] = useState(todayPKT())
+  const [saving, setSaving] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    const res = await fetch("/api/direct-profits")
+    if (res.ok) setEntries(await res.json())
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function handleAdd() {
+    if (!amount || Number(amount) <= 0) { toast.error("Enter a valid amount"); return }
+    if (!description.trim()) { toast.error("Description is required"); return }
+    setSaving(true)
+    const res = await fetch("/api/direct-profits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: Number(amount), description: description.trim(), profitDate }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to save")
+    } else {
+      toast.success("Direct profit recorded")
+      setAddOpen(false); setAmount(""); setDescription(""); setProfitDate(todayPKT())
+      load()
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(id: string) {
+    const res = await fetch(`/api/direct-profits/${id}`, { method: "DELETE" })
+    if (res.ok) { toast.success("Entry deleted"); load() }
+    else toast.error("Failed to delete")
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          {loading ? "" : `${entries.length} entr${entries.length !== 1 ? "ies" : "y"}`}
+        </p>
+        <Button onClick={() => { setAmount(""); setDescription(""); setProfitDate(todayPKT()); setAddOpen(true) }} size="sm" className="h-9">
+          <Plus className="w-4 h-4 mr-1" /> Add Direct Profit
+        </Button>
+      </div>
+
+      {loading ? (
+        Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)
+      ) : entries.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <TrendingUp className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+          <p className="text-sm font-medium">No direct profit entries yet</p>
+          <p className="text-xs mt-1">Record profit from shop-to-shop deals that bypass inventory</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-start justify-between gap-3 p-3 border border-gray-100 rounded-xl">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 leading-tight">{e.description}</p>
+                <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {new Date(e.profitDate).toLocaleDateString("en-PK", {
+                    day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Karachi",
+                  })}
+                  {" · by "}{e.recordedBy}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <p className="text-sm font-bold text-teal-700">{formatPKR(e.amount)}</p>
+                <button
+                  onClick={() => handleDelete(e.id)}
+                  className="text-gray-300 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add dialog */}
+      <Dialog open={addOpen} onOpenChange={(v) => { if (!v) setAddOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Record Direct Profit</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Profit Amount (PKR) *</Label>
+              <Input
+                type="number" min={1}
+                placeholder="e.g. 15000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="h-11 text-base"
+              />
+              {amount && <p className="text-xs text-gray-400">{formatPKR(Number(amount))}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description *
+                <span className="text-gray-400 font-normal ml-1">({description.length}/150)</span>
+              </Label>
+              <Input
+                placeholder="e.g. iPhone 15 Pro deal, bought 95k sold 1.1L"
+                value={description}
+                maxLength={150}
+                onChange={(e) => setDescription(e.target.value)}
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date *</Label>
+              <Input
+                type="date"
+                value={profitDate}
+                onChange={(e) => setProfitDate(e.target.value)}
+                className="h-11"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={handleAdd} disabled={saving || !amount || !description.trim()}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 /* ─── Main Page ─── */
 export default function SalesPage() {
-  const [tab, setTab] = useState<"customer" | "shop">("customer")
+  const [tab, setTab] = useState<"customer" | "shop" | "direct">("customer")
   const [shops, setShops] = useState<Shop[]>([])
   const [recentSales, setRecentSales] = useState<RecentSale[]>([])
   const [loadingRecent, setLoadingRecent] = useState(true)
@@ -679,17 +832,17 @@ export default function SalesPage() {
       <h1 className="text-xl font-bold text-gray-900">Record Sale</h1>
 
       {/* Tabs */}
-      <div className="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl">
-        {(["customer", "shop"] as const).map((t) => (
+      <div className="grid grid-cols-3 gap-1 bg-gray-100 p-1 rounded-xl">
+        {(["customer", "shop", "direct"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "py-2.5 rounded-lg text-sm font-medium transition-all",
+              "py-2.5 rounded-lg text-xs font-medium transition-all",
               tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
             )}
           >
-            {t === "customer" ? "Customer Sale" : "Shop Sale"}
+            {t === "customer" ? "Customer Sale" : t === "shop" ? "Shop Sale" : "Direct Profit"}
           </button>
         ))}
       </div>
@@ -698,12 +851,15 @@ export default function SalesPage() {
       <div className="min-h-[300px]">
         {tab === "customer" ? (
           <CustomerSale />
-        ) : (
+        ) : tab === "shop" ? (
           <ShopSale shops={shops} onShopAdded={(s) => setShops((prev) => [s, ...prev])} />
+        ) : (
+          <DirectProfitTab />
         )}
       </div>
 
-      {/* Recent Sales */}
+      {/* Recent Sales — only shown on phone sale tabs */}
+      {tab !== "direct" && (
       <div className="space-y-3 pt-4 border-t border-gray-100">
         <p className="text-sm font-medium text-gray-500">Recent Sales</p>
         {loadingRecent ? (
@@ -735,6 +891,7 @@ export default function SalesPage() {
           ))
         )}
       </div>
+      )}
     </div>
   )
 }
