@@ -13,7 +13,7 @@ export async function PATCH(
 
     const { id, balanceId } = await params
     const body = await req.json()
-    const { amount } = body
+    const { amount, notes } = body
 
     if (!amount || Number(amount) <= 0)
       return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 })
@@ -41,7 +41,10 @@ export async function PATCH(
 
       return await tx.shopPriorBalance.update({
         where: { id: balanceId },
-        data: { amountPaid: Number(balance.amountPaid) + applying },
+        data: {
+          amountPaid: Number(balance.amountPaid) + applying,
+          ...(notes?.trim() && { paymentNotes: notes.trim() }),
+        },
       })
     })
 

@@ -156,13 +156,14 @@ model ShopBuyer {
 }
 
 model ShopPriorBalance {
-  id          String   @id @default(uuid())
-  shopBuyerId String   @map("shop_buyer_id")
-  amount      Decimal  @db.Decimal(12, 2)
-  amountPaid  Decimal  @default(0) @map("amount_paid") @db.Decimal(12, 2)
-  description String
-  recordedBy  String   @map("recorded_by")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  shopBuyerId  String   @map("shop_buyer_id")
+  amount       Decimal  @db.Decimal(12, 2)
+  amountPaid   Decimal  @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  description  String
+  paymentNotes String?  @map("payment_notes")
+  recordedBy   String   @map("recorded_by")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   shop     ShopBuyer @relation(fields: [shopBuyerId], references: [id], onDelete: Cascade)
   recorder User      @relation(fields: [recordedBy], references: [id])

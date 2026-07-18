@@ -64,7 +64,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         await tx.shopPriorBalance.update({
           where: { id: pb.id },
-          data: { amountPaid: Number(pb.amountPaid) + applying },
+          data: {
+            amountPaid: Number(pb.amountPaid) + applying,
+            ...(notes?.trim() && { paymentNotes: notes.trim() }),
+          },
         })
       }
 

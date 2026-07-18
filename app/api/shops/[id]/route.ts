@@ -51,7 +51,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       db.shopPriorBalance.findMany({
         where: { shopBuyerId: id },
         orderBy: { createdAt: "asc" },
-        select: { id: true, amount: true, amountPaid: true, description: true, createdAt: true },
+        select: { id: true, amount: true, amountPaid: true, description: true, createdAt: true, paymentNotes: true },
       }),
     ])
 
@@ -76,6 +76,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         amountPaid: Number(pb.amountPaid),
         description: pb.description,
         createdAt: pb.createdAt,
+        paymentNotes: pb.paymentNotes ?? null,
       })),
       allPayments: allPayments.map((p) => ({ ...p, amount: p.amount.toString() })),
       sales: shop.sales.map((s) => ({

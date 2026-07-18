@@ -25,7 +25,26 @@ interface SaleItem {
   payments: SalePaymentItem[]
 }
 interface PriorBalance {
-  id: string; amount: number; amountPaid: number; description: string; createdAt: string
+  id: string; amount: number; amountPaid: number; description: string; createdAt: string; paymentNotes?: string | null
+}
+
+const PAYMENT_METHODS = ["Cash", "Online Transfer", "Cheque", "Other"] as const
+type PaymentMethod = typeof PAYMENT_METHODS[number]
+
+const METHOD_COLORS: Record<string, string> = {
+  "Cash": "bg-green-50 text-green-700",
+  "Online Transfer": "bg-blue-50 text-blue-700",
+  "Cheque": "bg-purple-50 text-purple-700",
+  "Other": "bg-gray-100 text-gray-600",
+}
+
+function getMethodInfo(notes: string | null) {
+  if (!notes) return null
+  const sep = notes.indexOf(":")
+  const method = sep > -1 ? notes.slice(0, sep).trim() : notes.trim()
+  const detail = sep > -1 ? notes.slice(sep + 1).trim() : null
+  const isKnown = PAYMENT_METHODS.includes(method as PaymentMethod)
+  return { method: isKnown ? method : notes, detail: isKnown ? detail : null, color: METHOD_COLORS[method] ?? "bg-gray-100 text-gray-600" }
 }
 interface Shop {
   id: string; name: string; phone: string | null; address: string | null; notes: string | null
@@ -76,6 +95,13 @@ export default function ShopDetailPage() {
   const [receiveBalanceAmount, setReceiveBalanceAmount] = useState("")
   const [receivingBalance, setReceivingBalance] = useState(false)
 
+  // Payment method state for each dialog (Cash is the default)
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("Cash")
+  const [payExtraNotes, setPayExtraNotes] = useState("")
+  const [salePayMethod, setSalePayMethod] = useState<PaymentMethod>("Cash")
+  const [salePayExtraNotes, setSalePayExtraNotes] = useState("")
+  const [balanceMethod, setBalanceMethod] = useState<PaymentMethod>("Cash")
+
   async function load() {
     const res = await fetch(`/api/shops/${id}`)
     if (!res.ok) { router.push("/shops"); return }
@@ -115,17 +141,18 @@ export default function ShopDetailPage() {
   async function handleBulkPayment() {
     if (!payAmount || Number(payAmount) <= 0) { toast.error("Enter a valid amount"); return }
     setPaying(true)
+    const combinedNotes = payMethod + (payExtraNotes.trim() ? `: ${payExtraNotes.trim()}` : "")
     const res = await fetch(`/api/shops/${id}/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: Number(payAmount), notes: payNotes }),
+      body: JSON.stringify({ amount: Number(payAmount), notes: combinedNotes }),
     })
     if (!res.ok) {
       const err = await res.json()
       toast.error(err.error ?? "Failed to record payment")
     } else {
       toast.success("Payment recorded")
-      setPayDialog(false); setPayAmount(""); setPayNotes("")
+      setPayDialog(false); setPayAmount(""); setPayNotes(""); setPayMethod("Cash"); setPayExtraNotes("")
       load()
     }
     setPaying(false)
@@ -172,14 +199,14 @@ export default function ShopDetailPage() {
     const res = await fetch(`/api/shops/${id}/prior-balances/${receiveBalanceDialog.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: Number(receiveBalanceAmount) }),
+      body: JSON.stringify({ amount: Number(receiveBalanceAmount), notes: balanceMethod }),
     })
     if (!res.ok) {
       const err = await res.json()
       toast.error(err.error ?? "Failed to record payment")
     } else {
       toast.success("Payment recorded")
-      setReceiveBalanceDialog(null); setReceiveBalanceAmount("")
+      setReceiveBalanceDialog(null); setReceiveBalanceAmount(""); setBalanceMethod("Cash")
       load()
     }
     setReceivingBalance(false)
@@ -199,17 +226,18 @@ export default function ShopDetailPage() {
   async function handleSalePayment() {
     if (!salePayDialog || !salePayAmount || Number(salePayAmount) <= 0) return
     setSalePaySaving(true)
+    const combinedNotes = salePayMethod + (salePayExtraNotes.trim() ? `: ${salePayExtraNotes.trim()}` : "")
     const res = await fetch(`/api/sales/${salePayDialog.id}/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: Number(salePayAmount), notes: salePayNotes }),
+      body: JSON.stringify({ amount: Number(salePayAmount), notes: combinedNotes }),
     })
     if (!res.ok) {
       const err = await res.json()
       toast.error(err.error ?? "Failed")
     } else {
       toast.success("Payment recorded")
-      setSalePayDialog(null); setSalePayAmount(""); setSalePayNotes("")
+      setSalePayDialog(null); setSalePayAmount(""); setSalePayNotes(""); setSalePayMethod("Cash"); setSalePayExtraNotes("")
       load()
     }
     setSalePaySaving(false)
@@ -279,16 +307,22 @@ export default function ShopDetailPage() {
           {shop.allPayments.length > 0 && (
             <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Payment History</p>
-              {shop.allPayments.slice(0, 5).map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-1.5 text-gray-500">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}</span>
-                    {p.notes && <span className="text-gray-400">· {p.notes}</span>}
+              {shop.allPayments.slice(0, 5).map((p) => {
+                const info = getMethodInfo(p.notes)
+                return (
+                  <div key={p.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-1.5 text-gray-500 flex-wrap">
+                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}</span>
+                      {info && (
+                        <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", info.color)}>{info.method}</span>
+                      )}
+                      {info?.detail && <span className="text-gray-400 text-xs">· {info.detail}</span>}
+                    </div>
+                    <span className="font-medium text-gray-800 flex-shrink-0 ml-2">{formatPKR(Number(p.amount))}</span>
                   </div>
-                  <span className="font-medium text-gray-800">{formatPKR(Number(p.amount))}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -321,7 +355,12 @@ export default function ShopDetailPage() {
                         <p className="text-sm font-medium text-gray-900">{pb.description}</p>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-xs text-gray-500">Total: {formatPKR(pb.amount)}</span>
-                          {pb.amountPaid > 0 && <span className="text-xs text-green-600">Paid: {formatPKR(pb.amountPaid)}</span>}
+                          {pb.amountPaid > 0 && (
+                            <span className="text-xs text-green-600">
+                              Paid: {formatPKR(pb.amountPaid)}
+                              {pb.paymentNotes && ` · ${pb.paymentNotes}`}
+                            </span>
+                          )}
                           <span className={cn("text-xs font-semibold", remaining > 0 ? "text-orange-600" : "text-green-600")}>
                             {remaining > 0 ? `Remaining: ${formatPKR(remaining)}` : "Settled ✓"}
                           </span>
@@ -427,7 +466,7 @@ export default function ShopDetailPage() {
       </div>
 
       {/* Bulk payment dialog */}
-      <Dialog open={payDialog} onOpenChange={(v) => { if (!v) setPayDialog(false) }}>
+      <Dialog open={payDialog} onOpenChange={(v) => { if (!v) { setPayDialog(false); setPayMethod("Cash"); setPayExtraNotes("") } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Record Payment from {shop.name}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-1">
@@ -443,15 +482,34 @@ export default function ShopDetailPage() {
               {payAmount && <p className="text-xs text-gray-400">{formatPKR(Number(payAmount))}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
-              <Input placeholder="e.g. cash, bank transfer" value={payNotes} onChange={(e) => setPayNotes(e.target.value)} className="h-11" />
+              <Label>Payment Method *</Label>
+              <div className="flex gap-2 flex-wrap">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m} type="button"
+                    onClick={() => setPayMethod(m)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                      payMethod === m
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Extra Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+              <Input placeholder="e.g. Meezan Bank, Ali bhai" value={payExtraNotes} onChange={(e) => setPayExtraNotes(e.target.value)} className="h-11" />
             </div>
             <p className="text-xs text-gray-400">
               Prior balances are cleared first, then oldest phone sales.
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPayDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setPayDialog(false); setPayMethod("Cash"); setPayExtraNotes("") }}>Cancel</Button>
             <Button onClick={handleBulkPayment} disabled={paying}>
               {paying ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
@@ -461,7 +519,7 @@ export default function ShopDetailPage() {
       </Dialog>
 
       {/* Per-sale payment dialog */}
-      <Dialog open={salePayDialog !== null} onOpenChange={(v) => { if (!v) setSalePayDialog(null) }}>
+      <Dialog open={salePayDialog !== null} onOpenChange={(v) => { if (!v) { setSalePayDialog(null); setSalePayMethod("Cash"); setSalePayExtraNotes("") } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Receive Payment</DialogTitle>
@@ -486,13 +544,32 @@ export default function ShopDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
-                <Input value={salePayNotes} onChange={(e) => setSalePayNotes(e.target.value)} className="h-11" />
+                <Label>Payment Method *</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {PAYMENT_METHODS.map((m) => (
+                    <button
+                      key={m} type="button"
+                      onClick={() => setSalePayMethod(m)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                        salePayMethod === m
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Extra Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+                <Input placeholder="e.g. Meezan Bank" value={salePayExtraNotes} onChange={(e) => setSalePayExtraNotes(e.target.value)} className="h-11" />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSalePayDialog(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setSalePayDialog(null); setSalePayMethod("Cash"); setSalePayExtraNotes("") }}>Cancel</Button>
             <Button onClick={handleSalePayment} disabled={salePaySaving}>
               {salePaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
@@ -543,7 +620,7 @@ export default function ShopDetailPage() {
       </Dialog>
 
       {/* Receive payment for a prior balance dialog */}
-      <Dialog open={receiveBalanceDialog !== null} onOpenChange={(v) => { if (!v) setReceiveBalanceDialog(null) }}>
+      <Dialog open={receiveBalanceDialog !== null} onOpenChange={(v) => { if (!v) { setReceiveBalanceDialog(null); setBalanceMethod("Cash") } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Receive Payment</DialogTitle>
@@ -570,10 +647,29 @@ export default function ShopDetailPage() {
                 />
                 {receiveBalanceAmount && <p className="text-xs text-gray-400">{formatPKR(Number(receiveBalanceAmount))}</p>}
               </div>
+              <div className="space-y-1.5">
+                <Label>Payment Method *</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {PAYMENT_METHODS.map((m) => (
+                    <button
+                      key={m} type="button"
+                      onClick={() => setBalanceMethod(m)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                        balanceMethod === m
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReceiveBalanceDialog(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setReceiveBalanceDialog(null); setBalanceMethod("Cash") }}>Cancel</Button>
             <Button onClick={handleReceivePriorBalance} disabled={receivingBalance}>
               {receivingBalance ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
