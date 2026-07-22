@@ -119,3 +119,50 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Failed to load customers" }, { status: 500 })
   }
 }
+
+// Rename a customer (updates customerName on all matching sales)
+export async function PATCH(req: Request) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { oldName, newName } = await req.json()
+    if (!oldName?.trim()) return NextResponse.json({ error: "Old name is required" }, { status: 400 })
+    if (!newName?.trim()) return NextResponse.json({ error: "New name cannot be empty" }, { status: 400 })
+
+    const trimmedNew = newName.trim()
+    if (trimmedNew === oldName.trim()) return NextResponse.json({ success: true, updated: 0 })
+
+    const result = await db.sale.updateMany({
+      where: { saleType: "customer", customerName: oldName.trim() },
+      data: { customerName: trimmedNew },
+    })
+
+    return NextResponse.json({ success: true, updated: result.count })
+  } catch (err) {
+    console.error("[PATCH /api/customers]", err)
+    return NextResponse.json({ error: "Failed to rename customer" }, { status: 500 })
+  }
+}
+
+// Delete a customer — clears customerName on all their sales (anonymizes, preserves financial data)
+export async function DELETE(req: Request) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { searchParams } = new URL(req.url)
+    const name = searchParams.get("name")
+    if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 })
+
+    const result = await db.sale.updateMany({
+      where: { saleType: "customer", customerName: name.trim() },
+      data: { customerName: null },
+    })
+
+    return NextResponse.json({ success: true, updated: result.count })
+  } catch (err) {
+    console.error("[DELETE /api/customers]", err)
+    return NextResponse.json({ error: "Failed to delete customer" }, { status: 500 })
+  }
+}

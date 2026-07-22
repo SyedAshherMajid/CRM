@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { Plus, ArrowRight, Loader2, User, Store, Calendar, ChevronLeft } from "lucide-react"
+import { Plus, ArrowRight, Loader2, User, Store, Calendar, ChevronLeft, Pencil, Trash2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
@@ -374,6 +374,15 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
   const [salePayNotes, setSalePayNotes] = useState("")
   const [salePaySaving, setSalePaySaving] = useState(false)
 
+  // Edit customer
+  const [editOpen, setEditOpen] = useState(false)
+  const [editName, setEditName] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
+
+  // Delete customer
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -412,6 +421,49 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
     }
   }
 
+  async function handleRename() {
+    if (!editName.trim() || editName.trim() === customerName) { setEditOpen(false); return }
+    setEditSaving(true)
+    try {
+      const res = await fetch("/api/customers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldName: customerName, newName: editName.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to rename customer")
+      } else {
+        toast.success("Customer renamed")
+        setEditOpen(false)
+        onClose()
+      }
+    } catch {
+      toast.error("Failed to rename customer")
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/customers?name=${encodeURIComponent(customerName)}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to delete customer")
+      } else {
+        toast.success("Customer removed")
+        setDeleteOpen(false)
+        onClose()
+      }
+    } catch {
+      toast.error("Failed to delete customer")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const pendingCount = detail?.sales.filter((s) => s.pending > 0).length ?? 0
   const filteredSales = detail?.sales.filter((s) => {
     if (activeTab === "pending") return s.pending > 0
@@ -432,9 +484,27 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
               <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
                 <User className="w-4 h-4 text-gray-500" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <DialogTitle className="text-base leading-tight">{customerName}</DialogTitle>
                 <DialogDescription className="text-xs">Customer ledger</DialogDescription>
+              </div>
+              <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-gray-600"
+                  onClick={() => { setEditName(customerName); setEditOpen(true) }}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-red-600"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
             </div>
           </DialogHeader>
@@ -548,6 +618,68 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
               </>
             ) : null}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit customer name dialog */}
+      <Dialog open={editOpen} onOpenChange={(v) => { if (!v) setEditOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Customer Name</DialogTitle>
+            <DialogDescription className="sr-only">Rename this customer</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Customer Name *</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Enter new name"
+                className="h-11"
+                onKeyDown={(e) => { if (e.key === "Enter") handleRename() }}
+              />
+              <p className="text-xs text-gray-400">This will rename the customer across all their sales.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={editSaving || !editName.trim()}>
+              {editSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Save Name
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete customer dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(v) => { if (!v) setDeleteOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove Customer?</DialogTitle>
+            <DialogDescription className="sr-only">Confirm removing this customer</DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm text-gray-700">
+              Remove <span className="font-semibold">{customerName}</span> from the customer list?
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 space-y-1">
+              <p className="font-medium">What happens:</p>
+              <p>• Their sale records and payments are <span className="font-medium">preserved</span></p>
+              <p>• The customer name will be cleared from those sales</p>
+              <p>• They will no longer appear in the customer list</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Remove Customer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
