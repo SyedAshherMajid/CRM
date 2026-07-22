@@ -18,6 +18,7 @@ export async function GET() {
       customerOwingRows,
       lotsForSuppliers,
       supplierDirectPayPerSupplier,
+      priorBalRows,
     ] = await Promise.all([
 
       // 1. Available phones aggregate
@@ -135,6 +136,16 @@ export async function GET() {
           amount: true,
         },
       }),
+
+      // 10. Prior balance outstanding per shop (all-time)
+      db.shopPriorBalance.findMany({
+        select: {
+          shopBuyerId: true,
+          amount: true,
+          amountPaid: true,
+          shop: { select: { name: true } },
+        },
+      }),
     ])
 
     // ── Stock ──────────────────────────────────────────────────────────────
@@ -167,13 +178,45 @@ export async function GET() {
     }))
 
     // ── Shops owing ────────────────────────────────────────────────────────
-    const shopsMapped = shopOwingRows.map((r) => ({
-      name: r.shop_name,
-      outstanding: Number(r.outstanding),
-      pendingCount: Number(r.pending_count),
-      totalSales: Number(r.total_sales),
-    }))
-    const totalShopsOwing = shopsMapped.reduce((s, r) => s + Math.max(0, r.outstanding), 0)
+    // Build per-shop prior balance outstanding
+    const priorBalMap = new Map<string, { outstanding: number; shopName: string }>()
+    for (const pb of priorBalRows) {
+      const net = Number(pb.amount) - Number(pb.amountPaid)
+      if (!priorBalMap.has(pb.shopBuyerId)) {
+        priorBalMap.set(pb.shopBuyerId, { outstanding: 0, shopName: pb.shop.name })
+      }
+      priorBalMap.get(pb.shopBuyerId)!.outstanding += net
+    }
+
+    // Index phone-sale rows by shop ID
+    const shopSalesById = new Map<string, { name: string; outstanding: number; pendingCount: number; totalSales: number }>()
+    for (const r of shopOwingRows) {
+      shopSalesById.set(r.shop_buyer_id, {
+        name: r.shop_name,
+        outstanding: Number(r.outstanding),
+        pendingCount: Number(r.pending_count),
+        totalSales: Number(r.total_sales),
+      })
+    }
+
+    // Merge phone sales + prior balances (include shops with only prior balances)
+    const allShopIds = new Set([
+      ...shopOwingRows.map(r => r.shop_buyer_id),
+      ...Array.from(priorBalMap.keys()),
+    ])
+    const shopsMapped = Array.from(allShopIds).map(id => {
+      const sales = shopSalesById.get(id)
+      const prior = priorBalMap.get(id)
+      return {
+        name: sales?.name ?? prior?.shopName ?? "Unknown",
+        outstanding: (sales?.outstanding ?? 0) + Math.max(0, prior?.outstanding ?? 0),
+        pendingCount: sales?.pendingCount ?? 0,
+        totalSales: sales?.totalSales ?? 0,
+      }
+    }).filter(s => s.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding)
+
+    const totalShopsOwing = shopsMapped.reduce((s, r) => s + r.outstanding, 0)
 
     // ── Customers owing ────────────────────────────────────────────────────
     const customersMapped = customerOwingRows.map((r) => ({

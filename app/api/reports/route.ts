@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       expensesRaw,
       purchasedPhonesRaw,
       lotsWithSuppliers,
-      priorBalOwing,
+      priorBalRaw,
       directProfitsRaw,
     ] = await Promise.all([
       // 1. Phone purchase stats
@@ -130,9 +130,14 @@ export async function GET(req: Request) {
         },
       }),
 
-      // 10. Prior balance outstanding from shops (all-time, not period-filtered)
-      db.shopPriorBalance.aggregate({
-        _sum: { amount: true, amountPaid: true },
+      // 10. Prior balance outstanding per shop (all-time, not period-filtered)
+      db.shopPriorBalance.findMany({
+        select: {
+          shopBuyerId: true,
+          amount: true,
+          amountPaid: true,
+          shop: { select: { name: true } },
+        },
       }),
 
       // 11. Direct profits in period
@@ -229,7 +234,7 @@ export async function GET(req: Request) {
       }
     })
 
-    // Per-shop breakdown
+    // Per-shop breakdown — phone sales (period-filtered)
     const shopMap = new Map<string, { name: string; totalOwed: number; salesCount: number }>()
     for (const sale of shopSales) {
       if (sale.shopBuyer) {
@@ -240,14 +245,39 @@ export async function GET(req: Request) {
         shop.salesCount += 1
       }
     }
-    const shopDetails = Array.from(shopMap.values()).map((shop) => ({
-      name: shop.name,
-      amountOwed: shop.totalOwed,
-      salesCount: shop.salesCount,
-    }))
-    const totalPendingFromShops =
-      Array.from(shopMap.values()).reduce((sum, s) => sum + s.totalOwed, 0) +
-      (priorBalOwing._sum.amount?.toNumber() ?? 0) - (priorBalOwing._sum.amountPaid?.toNumber() ?? 0)
+
+    // Per-shop prior balance outstanding (all-time)
+    const priorPerShopMap = new Map<string, { outstanding: number; shopName: string }>()
+    for (const pb of priorBalRaw) {
+      const net = Number(pb.amount) - Number(pb.amountPaid)
+      if (!priorPerShopMap.has(pb.shopBuyerId)) {
+        priorPerShopMap.set(pb.shopBuyerId, { outstanding: 0, shopName: pb.shop.name })
+      }
+      priorPerShopMap.get(pb.shopBuyerId)!.outstanding += net
+    }
+
+    // Merge phone sales + prior balances (include shops with only prior balances)
+    const mergedShopMap = new Map<string, { name: string; totalOwed: number; salesCount: number }>()
+    for (const [id, shop] of shopMap.entries()) {
+      mergedShopMap.set(id, { ...shop })
+    }
+    for (const [shopId, prior] of priorPerShopMap.entries()) {
+      const priorNet = Math.max(0, prior.outstanding)
+      if (priorNet <= 0) continue
+      if (mergedShopMap.has(shopId)) {
+        mergedShopMap.get(shopId)!.totalOwed += priorNet
+      } else {
+        mergedShopMap.set(shopId, { name: prior.shopName, totalOwed: priorNet, salesCount: 0 })
+      }
+    }
+    const shopDetails = Array.from(mergedShopMap.values())
+      .filter(s => s.totalOwed > 0)
+      .map(shop => ({
+        name: shop.name,
+        amountOwed: shop.totalOwed,
+        salesCount: shop.salesCount,
+      }))
+    const totalPendingFromShops = shopDetails.reduce((sum, s) => sum + s.amountOwed, 0)
 
     // Per-supplier breakdown
     const supplierMap = new Map<
