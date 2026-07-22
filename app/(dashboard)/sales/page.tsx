@@ -342,6 +342,7 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null)
   const [addShopOpen, setAddShopOpen] = useState(false)
+  const [shopSearch, setShopSearch] = useState("")
   const [search, setSearch] = useState("")
   const [results, setResults] = useState<AvailablePhone[]>([])
   const [searching, setSearching] = useState(false)
@@ -365,7 +366,7 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
   }, [search, cart])
 
   function reset() {
-    setStep(1); setSelectedShop(null); setSearch(""); setResults([])
+    setStep(1); setSelectedShop(null); setShopSearch(""); setSearch(""); setResults([])
     setCart([]); setAmountReceived(""); setSaleNotes("")
   }
 
@@ -411,12 +412,26 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
     setSaving(false)
   }
 
+  const filteredShops = shopSearch.trim()
+    ? shops.filter((s) => s.name.toLowerCase().includes(shopSearch.toLowerCase()))
+    : shops
+
   if (step === 1) return (
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label>Select Shop *</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder="Search shop by name..."
+            value={shopSearch}
+            onChange={(e) => setShopSearch(e.target.value)}
+            className="h-11 pl-9"
+            autoFocus
+          />
+        </div>
         <div className="grid gap-2">
-          {shops.map((s) => (
+          {filteredShops.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -430,6 +445,9 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
               <ArrowRight className="w-4 h-4 text-gray-400" />
             </button>
           ))}
+          {shopSearch.trim() && filteredShops.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">No shops match &quot;{shopSearch}&quot;</p>
+          )}
         </div>
         <button
           type="button"
