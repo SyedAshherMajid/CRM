@@ -77,6 +77,10 @@ export default function PhoneDetailPage() {
   const [statusNotes, setStatusNotes] = useState("")
   const [changingStatus, setChangingStatus] = useState(false)
 
+  // Return sale dialog state
+  const [returnDialog, setReturnDialog] = useState(false)
+  const [returningPhone, setReturningPhone] = useState(false)
+
   async function load() {
     const res = await fetch(`/api/phones/${id}`)
     if (!res.ok) { router.push("/inventory"); return }
@@ -149,6 +153,21 @@ export default function PhoneDetailPage() {
       setStatusNotes("")
     }
     setChangingStatus(false)
+  }
+
+  async function handleReturnSale() {
+    if (!phone?.sale) return
+    setReturningPhone(true)
+    const res = await fetch(`/api/sales/${phone.sale.id}`, { method: "DELETE" })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed to return sale")
+    } else {
+      toast.success("Sale returned — phone is back in inventory")
+      setReturnDialog(false)
+      load()
+    }
+    setReturningPhone(false)
   }
 
   async function handleDeletePhone() {
@@ -344,6 +363,19 @@ export default function PhoneDetailPage() {
         </div>
       )}
 
+      {/* Return sale button — only for sold phones */}
+      {phone.status === "sold" && phone.sale && (
+        <div className="pb-4">
+          <Button
+            variant="outline"
+            onClick={() => setReturnDialog(true)}
+            className="w-full h-11 border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" /> Return Sale
+          </Button>
+        </div>
+      )}
+
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={(v) => { if (!v) setEditOpen(false) }}>
         <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
@@ -466,6 +498,54 @@ export default function PhoneDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Return sale confirmation dialog */}
+      <Dialog open={returnDialog} onOpenChange={(v) => { if (!v) setReturnDialog(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Return this sale?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-gray-600">
+              The sale record will be permanently removed and <span className="font-semibold">{phone.model}</span> will go back to available inventory.
+            </p>
+            {phone.sale && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Sold to</span>
+                  <span className="font-medium text-gray-900">
+                    {phone.sale.saleType === "shop" && phone.sale.shopBuyer
+                      ? phone.sale.shopBuyer.name
+                      : phone.sale.customerName || "Walk-in"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Selling price</span>
+                  <span className="font-medium text-gray-900">{formatPKR(Number(phone.sale.sellingPrice))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Amount received</span>
+                  <span className="font-medium text-gray-900">{formatPKR(Number(phone.sale.amountReceived))}</span>
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-orange-600">
+              Make sure the phone has been physically returned and any received amount has been refunded before confirming.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReturnDialog(false)}>Cancel</Button>
+            <Button
+              onClick={handleReturnSale}
+              disabled={returningPhone}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {returningPhone ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Yes, Return Sale
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete phone dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-sm">
