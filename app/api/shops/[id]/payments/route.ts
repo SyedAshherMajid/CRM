@@ -88,6 +88,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           data: { saleId: sale.id, amount: applying, recordedBy: user.id, notes: notes?.trim() || null },
         })
       }
+
+      // Always log the total payment amount for the payment history display
+      await tx.shopPaymentLog.create({
+        data: {
+          shopBuyerId: id,
+          amount: Math.min(Number(amount), totalOutstanding),
+          notes: notes?.trim() || null,
+          recordedBy: user.id,
+        },
+      })
     })
 
     return NextResponse.json({ success: true })

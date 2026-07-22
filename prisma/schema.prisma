@@ -22,6 +22,7 @@ model User {
   supplierPayments  SupplierPayment[]
   expenses          Expense[]
   shopPriorBalances ShopPriorBalance[]
+  shopPaymentLogs   ShopPaymentLog[]
   directProfits     DirectProfit[]
 
   @@map("users")
@@ -152,8 +153,24 @@ model ShopBuyer {
 
   sales         Sale[]
   priorBalances ShopPriorBalance[]
+  paymentLogs   ShopPaymentLog[]
 
   @@map("shop_buyers")
+}
+
+model ShopPaymentLog {
+  id          String   @id @default(uuid())
+  shopBuyerId String   @map("shop_buyer_id")
+  amount      Decimal  @db.Decimal(12, 2)
+  receivedAt  DateTime @default(now()) @map("received_at")
+  notes       String?
+  recordedBy  String   @map("recorded_by")
+
+  shop     ShopBuyer @relation(fields: [shopBuyerId], references: [id], onDelete: Cascade)
+  recorder User      @relation(fields: [recordedBy], references: [id])
+
+  @@index([shopBuyerId])
+  @@map("shop_payment_logs")
 }
 
 model ShopPriorBalance {

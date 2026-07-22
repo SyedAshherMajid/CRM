@@ -39,11 +39,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         _sum: { sellingPrice: true, amountReceived: true },
       }),
 
-      // Payment history fetched directly (not via nested flatMap over all sales)
-      db.salePayment.findMany({
-        where: { sale: { shopBuyerId: id } },
+      // Payment history — from ShopPaymentLog so prior balance payments are included
+      db.shopPaymentLog.findMany({
+        where: { shopBuyerId: id },
         orderBy: { receivedAt: "desc" },
-        take: 100,
+        take: 200,
         select: { id: true, amount: true, receivedAt: true, notes: true },
       }),
 
