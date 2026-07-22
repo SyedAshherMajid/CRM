@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Pencil, Calendar, Loader2, Trash2 } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Calendar, Loader2, Trash2, ChevronDown, ChevronUp } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
@@ -94,6 +94,9 @@ export default function ShopDetailPage() {
   const [receiveBalanceDialog, setReceiveBalanceDialog] = useState<PriorBalance | null>(null)
   const [receiveBalanceAmount, setReceiveBalanceAmount] = useState("")
   const [receivingBalance, setReceivingBalance] = useState(false)
+
+  // Payment history expand/collapse
+  const [historyExpanded, setHistoryExpanded] = useState(false)
 
   // Payment method state for each dialog (Cash is the default)
   const [payMethod, setPayMethod] = useState<PaymentMethod>("Cash")
@@ -305,24 +308,50 @@ export default function ShopDetailPage() {
           </div>
 
           {shop.allPayments.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Payment History</p>
-              {shop.allPayments.slice(0, 5).map((p) => {
-                const info = getMethodInfo(p.notes)
-                return (
-                  <div key={p.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1.5 text-gray-500 flex-wrap">
-                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}</span>
-                      {info && (
-                        <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", info.color)}>{info.method}</span>
-                      )}
-                      {info?.detail && <span className="text-gray-400 text-xs">· {info.detail}</span>}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setHistoryExpanded((v) => !v)}
+                className="flex items-center justify-between w-full mb-2"
+              >
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Payment History ({shop.allPayments.length})
+                </p>
+                {historyExpanded
+                  ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                  : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+              </button>
+
+              <div className="space-y-2">
+                {(historyExpanded ? shop.allPayments : shop.allPayments.slice(0, 3)).map((p) => {
+                  const info = getMethodInfo(p.notes)
+                  return (
+                    <div key={p.id} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-1.5 text-gray-500 flex-wrap">
+                        <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        {info && (
+                          <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", info.color)}>{info.method}</span>
+                        )}
+                        {info?.detail && <span className="text-gray-400 text-xs">· {info.detail}</span>}
+                      </div>
+                      <span className="font-medium text-gray-800 flex-shrink-0 ml-2">{formatPKR(Number(p.amount))}</span>
                     </div>
-                    <span className="font-medium text-gray-800 flex-shrink-0 ml-2">{formatPKR(Number(p.amount))}</span>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+
+              {shop.allPayments.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryExpanded((v) => !v)}
+                  className="mt-2 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                >
+                  {historyExpanded
+                    ? <><ChevronUp className="w-3 h-3" /> Show less</>
+                    : <><ChevronDown className="w-3 h-3" /> Show all {shop.allPayments.length} payments</>}
+                </button>
+              )}
             </div>
           )}
         </CardContent>
