@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 
     const dateFilter = { gte: start, lte: end }
 
-    // 10 queries fired in parallel
+    // All queries fired in parallel
     const [
       phonesAgg,
       salesAgg,
@@ -42,6 +42,8 @@ export async function GET(req: Request) {
       lotsWithSuppliers,
       priorBalRaw,
       directProfitsRaw,
+      accessorySalesAgg,
+      accessoryShopSalesRaw,
     ] = await Promise.all([
       // 1. Phone purchase stats
       db.phone.aggregate({
@@ -152,17 +154,49 @@ export async function GET(req: Request) {
           recorder: { select: { name: true } },
         },
       }),
+
+      // 12. Accessory sales totals in period
+      db.accessorySale.findMany({
+        where: { soldAt: dateFilter },
+        select: {
+          totalSellingPrice: true,
+          quantity: true,
+          lot: { select: { totalCost: true, totalPieces: true } },
+        },
+      }),
+
+      // 13. Accessory shop sales for shop breakdown (pending receivables)
+      db.accessorySale.findMany({
+        where: { saleType: "shop" },
+        select: {
+          totalSellingPrice: true,
+          amountReceived: true,
+          shopBuyer: { select: { id: true, name: true } },
+        },
+      }),
     ])
+
+    // Accessory totals in period
+    const accSaleRevenue = accessorySalesAgg.reduce((sum, s) => sum + Number(s.totalSellingPrice), 0)
+    const accCostOfSold = accessorySalesAgg.reduce((sum, s) => {
+      const costPerPiece = s.lot.totalPieces > 0 ? Number(s.lot.totalCost) / s.lot.totalPieces : 0
+      return sum + costPerPiece * s.quantity
+    }, 0)
+    const accProfit = accSaleRevenue - accCostOfSold
 
     // Compute totals
     const totalPhonesPurchased = phonesAgg._count.id
     const totalPurchaseCost = Number(phonesAgg._sum.costPrice ?? 0)
 
     const totalPhonesSold = salesAgg._count.id
-    const totalSaleRevenue = Number(salesAgg._sum.sellingPrice ?? 0)
+    const phoneSaleRevenue = Number(salesAgg._sum.sellingPrice ?? 0)
     const totalCostOfSold = Number(costOfSoldRows[0]?.total_cost ?? 0)
-    const totalProfit = totalSaleRevenue - totalCostOfSold
-    const averageProfitPerPhone = totalPhonesSold > 0 ? totalProfit / totalPhonesSold : 0
+    const phoneProfit = phoneSaleRevenue - totalCostOfSold
+
+    // Combined phone + accessory
+    const totalSaleRevenue = phoneSaleRevenue + accSaleRevenue
+    const totalProfit = phoneProfit + accProfit
+    const averageProfitPerPhone = totalPhonesSold > 0 ? phoneProfit / totalPhonesSold : 0
 
     const totalOwedToSuppliers =
       Number(lotsAgg._sum.totalAmount ?? 0) - Number(lotsAgg._sum.amountPaid ?? 0)
@@ -256,7 +290,19 @@ export async function GET(req: Request) {
       priorPerShopMap.get(pb.shopBuyerId)!.outstanding += net
     }
 
-    // Merge phone sales + prior balances (include shops with only prior balances)
+    // Per-shop accessory outstanding
+    const accShopMap = new Map<string, { outstanding: number; shopName: string }>()
+    for (const sale of accessoryShopSalesRaw) {
+      if (sale.shopBuyer) {
+        const net = Number(sale.totalSellingPrice) - Number(sale.amountReceived)
+        if (!accShopMap.has(sale.shopBuyer.id)) {
+          accShopMap.set(sale.shopBuyer.id, { outstanding: 0, shopName: sale.shopBuyer.name })
+        }
+        accShopMap.get(sale.shopBuyer.id)!.outstanding += net
+      }
+    }
+
+    // Merge phone sales + prior balances + accessory (include shops with only prior balances/accessories)
     const mergedShopMap = new Map<string, { name: string; totalOwed: number; salesCount: number }>()
     for (const [id, shop] of shopMap.entries()) {
       mergedShopMap.set(id, { ...shop })
@@ -268,6 +314,15 @@ export async function GET(req: Request) {
         mergedShopMap.get(shopId)!.totalOwed += priorNet
       } else {
         mergedShopMap.set(shopId, { name: prior.shopName, totalOwed: priorNet, salesCount: 0 })
+      }
+    }
+    for (const [shopId, acc] of accShopMap.entries()) {
+      const accNet = Math.max(0, acc.outstanding)
+      if (accNet <= 0) continue
+      if (mergedShopMap.has(shopId)) {
+        mergedShopMap.get(shopId)!.totalOwed += accNet
+      } else {
+        mergedShopMap.set(shopId, { name: acc.shopName, totalOwed: accNet, salesCount: 0 })
       }
     }
     const shopDetails = Array.from(mergedShopMap.values())
@@ -310,6 +365,8 @@ export async function GET(req: Request) {
         netProfit,
         totalExpenses,
         averageProfitPerPhone,
+        accSaleRevenue,
+        accProfit,
       },
       budgeting: {
         totalOwedToSuppliers,

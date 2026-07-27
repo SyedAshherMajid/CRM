@@ -12,7 +12,7 @@ export async function GET() {
     const { start: monthStart, end: monthEnd } = get1010MonthRange()
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-    // All 12 queries fired in parallel — total wait = slowest single query, not sum of all
+    // All queries fired in parallel — total wait = slowest single query, not sum of all
     const [
       availableCount,
       soldThisMonth,
@@ -27,67 +27,50 @@ export async function GET() {
       availableStockAgg,
       customerSaleAgg,
       directProfitAgg,
+      accessoryLotOwing,
+      accessoryShopOwing,
+      accessorySalesThisMonth,
     ] = await Promise.all([
       // 1. Available phones count
-      db.phone.count({
-        where: { status: "available" },
-      }),
+      db.phone.count({ where: { status: "available" } }),
 
       // 2. Phones sold this month
-      db.sale.count({
-        where: { soldAt: { gte: monthStart, lte: monthEnd } },
-      }),
+      db.sale.count({ where: { soldAt: { gte: monthStart, lte: monthEnd } } }),
 
       // 3. Lot totals for supplier owing base
-      db.purchaseLot.aggregate({
-        _sum: { totalAmount: true, amountPaid: true },
-      }),
+      db.purchaseLot.aggregate({ _sum: { totalAmount: true, amountPaid: true } }),
 
       // 4. Supplier-level direct payments (not tied to a specific lot)
-      db.supplierPayment.aggregate({
-        _sum: { amount: true },
-      }),
+      db.supplierPayment.aggregate({ _sum: { amount: true } }),
 
-      // 5. Pending from shops (shop-type sales only)
+      // 5. Pending from shops (phone sales)
       db.sale.aggregate({
         where: { saleType: "shop" },
         _sum: { sellingPrice: true, amountReceived: true },
       }),
 
       // 5b. Prior balance outstanding from shops
-      db.shopPriorBalance.aggregate({
-        _sum: { amount: true, amountPaid: true },
-      }),
+      db.shopPriorBalance.aggregate({ _sum: { amount: true, amountPaid: true } }),
 
-      // 6. Sales this month for profit calculation
+      // 6. Phone sales this month for profit calculation
       db.sale.findMany({
         where: { soldAt: { gte: monthStart, lte: monthEnd } },
-        select: {
-          sellingPrice: true,
-          phone: { select: { costPrice: true } },
-        },
+        select: { sellingPrice: true, phone: { select: { costPrice: true } } },
       }),
 
-      // 6. Recent phones added (activity feed)
+      // Recent phones added (activity feed)
       db.phone.findMany({
         where: { createdAt: { gte: thirtyDaysAgo } },
-        select: {
-          id: true,
-          createdAt: true,
-          model: true,
-          imei: true,
-          adder: { select: { name: true } },
-        },
+        select: { id: true, createdAt: true, model: true, imei: true, adder: { select: { name: true } } },
         orderBy: { createdAt: "desc" },
         take: 10,
       }),
 
-      // 7. Recent sales (activity feed)
+      // Recent sales (activity feed)
       db.sale.findMany({
         where: { soldAt: { gte: thirtyDaysAgo } },
         select: {
-          id: true,
-          soldAt: true,
+          id: true, soldAt: true,
           phone: { select: { model: true } },
           customerName: true,
           shopBuyer: { select: { name: true } },
@@ -97,59 +80,81 @@ export async function GET() {
         take: 10,
       }),
 
-      // 8. Recent payments (activity feed)
+      // Recent payments (activity feed)
       db.salePayment.findMany({
         where: { receivedAt: { gte: thirtyDaysAgo } },
         select: {
-          id: true,
-          receivedAt: true,
-          amount: true,
-          sale: {
-            select: {
-              phone: { select: { model: true } },
-              shopBuyer: { select: { name: true } },
-              customerName: true,
-            },
-          },
+          id: true, receivedAt: true, amount: true,
+          sale: { select: { phone: { select: { model: true } }, shopBuyer: { select: { name: true } }, customerName: true } },
           recorder: { select: { name: true } },
         },
         orderBy: { receivedAt: "desc" },
         take: 5,
       }),
 
-      // 11. Total cost of available phones (stock value)
-      db.phone.aggregate({
-        where: { status: "available" },
-        _sum: { costPrice: true },
-      }),
+      // Total cost of available phones (stock value)
+      db.phone.aggregate({ where: { status: "available" }, _sum: { costPrice: true } }),
 
-      // 12. Pending from customer sales
+      // Pending from customer phone sales
       db.sale.aggregate({
         where: { saleType: "customer" },
         _sum: { sellingPrice: true, amountReceived: true },
       }),
 
-      // 13. Direct profit this month
+      // Direct profit this month
       db.directProfit.aggregate({
         where: { profitDate: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
+
+      // Accessory lots owed to suppliers
+      db.accessoryLot.aggregate({ _sum: { totalCost: true, amountPaid: true } }),
+
+      // Accessory sales pending from shops
+      db.accessorySale.aggregate({
+        where: { saleType: "shop" },
+        _sum: { totalSellingPrice: true, amountReceived: true },
+      }),
+
+      // Accessory sales this month for profit
+      db.accessorySale.findMany({
+        where: { soldAt: { gte: monthStart, lte: monthEnd } },
+        select: {
+          totalSellingPrice: true, quantity: true, sellingPricePerPiece: true,
+          lot: { select: { totalCost: true, totalPieces: true } },
+        },
+      }),
     ])
 
-    // Calculate profit from the results
+    // Phone profit this month
     const revenueThisMonth = salesThisMonth.reduce((sum, s) => sum + Number(s.sellingPrice), 0)
     const costThisMonth = salesThisMonth.reduce((sum, s) => sum + Number(s.phone.costPrice), 0)
-    const profitThisMonth = revenueThisMonth - costThisMonth
+
+    // Accessory profit this month (revenue - cost_per_piece * quantity)
+    const accRevenueThisMonth = accessorySalesThisMonth.reduce((sum, s) => sum + Number(s.totalSellingPrice), 0)
+    const accCostThisMonth = accessorySalesThisMonth.reduce((sum, s) => {
+      const costPerPiece = s.lot.totalPieces > 0 ? Number(s.lot.totalCost) / s.lot.totalPieces : 0
+      return sum + costPerPiece * s.quantity
+    }, 0)
+
+    const profitThisMonth = (revenueThisMonth - costThisMonth) + (accRevenueThisMonth - accCostThisMonth)
 
     const totalOwedToSuppliers = Math.max(
       0,
       (supplierOwing._sum.totalAmount?.toNumber() || 0) -
       (supplierOwing._sum.amountPaid?.toNumber() || 0) -
-      (supplierDirectPayments._sum.amount?.toNumber() || 0)
+      (supplierDirectPayments._sum.amount?.toNumber() || 0) +
+      (accessoryLotOwing._sum.totalCost?.toNumber() || 0) -
+      (accessoryLotOwing._sum.amountPaid?.toNumber() || 0)
     )
 
+    const phonePendingFromShops =
+      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0)
+    const accessoryPendingFromShops =
+      (accessoryShopOwing._sum.totalSellingPrice?.toNumber() || 0) -
+      (accessoryShopOwing._sum.amountReceived?.toNumber() || 0)
     const totalPendingFromShops =
-      (shopOwing._sum.sellingPrice?.toNumber() || 0) - (shopOwing._sum.amountReceived?.toNumber() || 0) +
+      phonePendingFromShops + accessoryPendingFromShops +
       (shopPriorBalOwing._sum.amount?.toNumber() || 0) - (shopPriorBalOwing._sum.amountPaid?.toNumber() || 0)
 
     const availableStockValue = availableStockAgg._sum.costPrice?.toNumber() ?? 0
@@ -193,8 +198,8 @@ export async function GET() {
         owedToSuppliers: totalOwedToSuppliers,
         pendingFromShops: totalPendingFromShops,
         profitThisMonth,
-        revenueThisMonth,
-        costThisMonth,
+        revenueThisMonth: revenueThisMonth + accRevenueThisMonth,
+        costThisMonth: costThisMonth + accCostThisMonth,
         availableStockValue,
         customerPending,
         totalCapital,
@@ -203,10 +208,6 @@ export async function GET() {
       activity,
     })
 
-    // private = don't cache in CDN (personal business data)
-    // max-age=0 = always revalidate
-    // stale-while-revalidate=30 = serve stale data instantly while fetching fresh in background
-    // Effect: dashboard navigations feel instant even during cold starts
     response.headers.set("Cache-Control", "private, max-age=0, stale-while-revalidate=30")
     return response
   } catch (err) {

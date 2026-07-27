@@ -10,8 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { id } = await params
 
-    // All 4 queries run in parallel
-    const [shop, outstandingAgg, allPayments, priorBalances] = await Promise.all([
+    // All 5 queries run in parallel
+    const [shop, outstandingAgg, accessoryOutstandingAgg, allPayments, priorBalances] = await Promise.all([
       // Shop info + sales list (capped at 100 most recent)
       db.shopBuyer.findUnique({
         where: { id },
@@ -33,10 +33,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         },
       }),
 
-      // Outstanding balance via DB aggregate — no need to load all sales just to sum them
+      // Phone sale outstanding via DB aggregate
       db.sale.aggregate({
         where: { shopBuyerId: id },
         _sum: { sellingPrice: true, amountReceived: true },
+      }),
+
+      // Accessory sale outstanding via DB aggregate
+      db.accessorySale.aggregate({
+        where: { shopBuyerId: id },
+        _sum: { totalSellingPrice: true, amountReceived: true },
       }),
 
       // Payment history — from ShopPaymentLog so all payment types are included
@@ -57,19 +63,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    const saleOutstanding =
+    const phoneSaleOutstanding =
       (outstandingAgg._sum.sellingPrice?.toNumber() ?? 0) -
       (outstandingAgg._sum.amountReceived?.toNumber() ?? 0)
+    const accessorySaleOutstanding =
+      (accessoryOutstandingAgg._sum.totalSellingPrice?.toNumber() ?? 0) -
+      (accessoryOutstandingAgg._sum.amountReceived?.toNumber() ?? 0)
     const priorBalanceOutstanding = priorBalances.reduce(
       (sum, pb) => sum + Number(pb.amount) - Number(pb.amountPaid),
       0
     )
-    const outstanding = saleOutstanding + priorBalanceOutstanding
+    const outstanding = phoneSaleOutstanding + accessorySaleOutstanding + priorBalanceOutstanding
 
     return NextResponse.json({
       ...shop,
       outstanding,
-      saleOutstanding,
+      phoneSaleOutstanding,
+      accessorySaleOutstanding,
+      priorBalanceOutstanding,
       priorBalances: priorBalances.map((pb) => ({
         id: pb.id,
         amount: Number(pb.amount),

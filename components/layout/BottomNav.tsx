@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { LayoutDashboard, Package, PlusCircle, ShoppingBag, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { BarChart3, Store, Settings, Truck, Receipt, Activity } from "lucide-react"
+import { BarChart3, Store, Settings, Truck, Receipt, Activity, Zap } from "lucide-react"
 
 const mainLinks = [
   { href: "/", label: "Home", icon: LayoutDashboard },
@@ -16,6 +16,7 @@ const mainLinks = [
 ]
 
 const moreLinks = [
+  { href: "/accessories", label: "Accessories", icon: Zap },
   { href: "/shops", label: "Buyers", icon: Store },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },

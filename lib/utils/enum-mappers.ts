@@ -50,3 +50,11 @@ export function fromPtaStatus(v: string | null | undefined) {
   if (!v) return null
   return v === "NonPTA" ? "Non-PTA" : v
 }
+
+export function fromAccessoryCategory(v: string) {
+  return v === "ScreenProtector" ? "Screen Protector" : v
+}
+
+export function toAccessoryCategory(v: string) {
+  return v === "Screen Protector" ? "ScreenProtector" : v
+}

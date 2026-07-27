@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 
-// Distributes a bulk payment from a shop across pending items (FIFO: prior balances first, then phone sales oldest first)
+// Distributes a bulk payment from a shop across pending items (FIFO: prior balances → phone sales → accessory sales, oldest first each)
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser()
@@ -19,7 +19,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
     await db.$transaction(async (tx) => {
-      const [priorBalances, pendingSales] = await Promise.all([
+      const [priorBalances, pendingSales, pendingAccessorySales] = await Promise.all([
         tx.shopPriorBalance.findMany({
           where: { shopBuyerId: id },
           orderBy: { createdAt: "asc" },
@@ -33,6 +33,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             phone: { select: { model: true, storage: true } },
           },
         }),
+        tx.accessorySale.findMany({
+          where: { shopBuyerId: id, saleType: "shop" },
+          orderBy: { soldAt: "asc" },
+          select: {
+            id: true, totalSellingPrice: true, amountReceived: true,
+            lot: { select: { name: true } }, quantity: true,
+          },
+        }),
       ])
 
       const priorOutstanding = priorBalances.reduce(
@@ -41,7 +49,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const saleOutstanding = pendingSales.reduce(
         (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)), 0
       )
-      const totalOutstanding = priorOutstanding + saleOutstanding
+      const accessoryOutstanding = pendingAccessorySales.reduce(
+        (sum, s) => sum + (Number(s.totalSellingPrice) - Number(s.amountReceived)), 0
+      )
+      const totalOutstanding = priorOutstanding + saleOutstanding + accessoryOutstanding
 
       if (totalOutstanding <= 0) {
         const e = new Error("No outstanding balance for this shop") as Error & { status: number }
@@ -56,6 +67,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const descParts: string[] = []
       let priorApplied = 0
       const phonesApplied: string[] = []
+      const accessoriesApplied: string[] = []
 
       // Step 1: Clear prior balances first (oldest first)
       for (const pb of priorBalances) {
@@ -78,7 +90,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       if (priorApplied > 0) descParts.push("Prior balance")
 
-      // Step 2: Apply the rest to phone sales (oldest first)
+      // Step 2: Apply to phone sales (oldest first)
       for (const sale of pendingSales) {
         if (remaining <= 0) break
         const pending = Number(sale.sellingPrice) - Number(sale.amountReceived)
@@ -101,6 +113,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         descParts.push(`Phone: ${phonesApplied[0]}`)
       } else if (phonesApplied.length > 1) {
         descParts.push(`${phonesApplied.length} phones`)
+      }
+
+      // Step 3: Apply to accessory sales (oldest first)
+      for (const sale of pendingAccessorySales) {
+        if (remaining <= 0) break
+        const pending = Number(sale.totalSellingPrice) - Number(sale.amountReceived)
+        if (pending <= 0) continue
+
+        const applying = Math.min(remaining, pending)
+        remaining -= applying
+        accessoriesApplied.push(`${sale.lot.name} ×${sale.quantity}`)
+
+        await tx.accessorySale.update({
+          where: { id: sale.id },
+          data: { amountReceived: Number(sale.amountReceived) + applying },
+        })
+        await tx.accessorySalePayment.create({
+          data: { saleId: sale.id, amount: applying, recordedBy: user.id, notes: notes?.trim() || null },
+        })
+      }
+
+      if (accessoriesApplied.length === 1) {
+        descParts.push(`Accessory: ${accessoriesApplied[0]}`)
+      } else if (accessoriesApplied.length > 1) {
+        descParts.push(`${accessoriesApplied.length} accessory sales`)
       }
 
       // Log this payment event for the payment history display

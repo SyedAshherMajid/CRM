@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard, Package, ShoppingBag, PlusCircle,
-  Store, Truck, BarChart3, Settings, Smartphone, Receipt, Activity
+  Store, Truck, BarChart3, Settings, Smartphone, Receipt, Activity, Zap
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -12,6 +12,7 @@ const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/lots", label: "Purchase Lots", icon: ShoppingBag },
+  { href: "/accessories", label: "Accessories", icon: Zap },
   { href: "/sales", label: "Record Sale", icon: PlusCircle },
   { href: "/shops", label: "Buyers", icon: Store },
   { href: "/suppliers", label: "Suppliers", icon: Truck },

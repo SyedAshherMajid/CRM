@@ -47,9 +47,16 @@ function getMethodInfo(notes: string | null) {
   const isKnown = PAYMENT_METHODS.includes(method as PaymentMethod)
   return { method: isKnown ? method : notes, detail: isKnown ? detail : null, color: METHOD_COLORS[method] ?? "bg-gray-100 text-gray-600" }
 }
+interface AccessorySaleItem {
+  id: string; quantity: number; sellingPricePerPiece: number; totalSellingPrice: number
+  amountReceived: number; pending: number; saleType: string
+  lot: { id: string; name: string; category: string } | null
+  customerName: string | null; soldAt: string; notes: string | null
+}
+
 interface Shop {
   id: string; name: string; phone: string | null; address: string | null; notes: string | null
-  outstanding: number; saleOutstanding: number
+  outstanding: number; phoneSaleOutstanding: number; accessorySaleOutstanding: number; priorBalanceOutstanding: number
   allPayments: PaymentLogItem[]; sales: SaleItem[]
   priorBalances: PriorBalance[]
 }
@@ -96,6 +103,14 @@ export default function ShopDetailPage() {
   const [receiveBalanceAmount, setReceiveBalanceAmount] = useState("")
   const [receivingBalance, setReceivingBalance] = useState(false)
 
+  // Accessory sales
+  const [accessorySales, setAccessorySales] = useState<AccessorySaleItem[]>([])
+  const [accSalePayDialog, setAccSalePayDialog] = useState<AccessorySaleItem | null>(null)
+  const [accSalePayAmount, setAccSalePayAmount] = useState("")
+  const [accSalePayMethod, setAccSalePayMethod] = useState<PaymentMethod>("Cash")
+  const [accSalePayExtraNotes, setAccSalePayExtraNotes] = useState("")
+  const [accSalePaySaving, setAccSalePaySaving] = useState(false)
+
   // Payment history modal
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -107,10 +122,14 @@ export default function ShopDetailPage() {
   const [balanceMethod, setBalanceMethod] = useState<PaymentMethod>("Cash")
 
   async function load() {
-    const res = await fetch(`/api/shops/${id}`)
-    if (!res.ok) { router.push("/shops"); return }
-    const data = await res.json()
+    const [shopRes, accRes] = await Promise.all([
+      fetch(`/api/shops/${id}`),
+      fetch(`/api/accessories/sales?shopId=${id}`),
+    ])
+    if (!shopRes.ok) { router.push("/shops"); return }
+    const [data, accData] = await Promise.all([shopRes.json(), accRes.ok ? accRes.json() : []])
     setShop(data)
+    setAccessorySales(accData)
     setLoading(false)
   }
 
@@ -227,6 +246,26 @@ export default function ShopDetailPage() {
     }
   }
 
+  async function handleAccSalePayment() {
+    if (!accSalePayDialog || !accSalePayAmount || Number(accSalePayAmount) <= 0) return
+    setAccSalePaySaving(true)
+    const combinedNotes = accSalePayMethod + (accSalePayExtraNotes.trim() ? `: ${accSalePayExtraNotes.trim()}` : "")
+    const res = await fetch(`/api/accessories/sales/${accSalePayDialog.id}/payments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: Number(accSalePayAmount), notes: combinedNotes }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "Failed")
+    } else {
+      toast.success("Payment recorded")
+      setAccSalePayDialog(null); setAccSalePayAmount(""); setAccSalePayMethod("Cash"); setAccSalePayExtraNotes("")
+      load()
+    }
+    setAccSalePaySaving(false)
+  }
+
   async function handleSalePayment() {
     if (!salePayDialog || !salePayAmount || Number(salePayAmount) <= 0) return
     setSalePaySaving(true)
@@ -264,6 +303,7 @@ export default function ShopDetailPage() {
   })
 
   const pendingCount = shop.sales.filter((s) => Number(s.sellingPrice) > Number(s.amountReceived)).length
+  const accPendingCount = accessorySales.filter((s) => s.pending > 0).length
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
@@ -297,9 +337,6 @@ export default function ShopDetailPage() {
               )}>
                 {shop.outstanding > 0 ? formatPKR(shop.outstanding) : "All settled ✓"}
               </p>
-              {pendingCount > 0 && (
-                <p className="text-xs text-gray-400 mt-1">{pendingCount} sale{pendingCount !== 1 ? "s" : ""} with pending payment</p>
-              )}
             </div>
             {shop.outstanding > 0 && (
               <Button onClick={() => { setPayAmount(""); setPayNotes(""); setPayDialog(true) }} className="h-9">
@@ -307,6 +344,30 @@ export default function ShopDetailPage() {
               </Button>
             )}
           </div>
+
+          {/* Sub-breakdown */}
+          {shop.outstanding > 0 && (
+            <div className="mt-3 flex flex-col gap-1">
+              {shop.priorBalanceOutstanding > 0 && (
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Prior balances</span>
+                  <span>{formatPKR(shop.priorBalanceOutstanding)}</span>
+                </div>
+              )}
+              {shop.phoneSaleOutstanding > 0 && (
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Phones ({pendingCount} sale{pendingCount !== 1 ? "s" : ""})</span>
+                  <span>{formatPKR(shop.phoneSaleOutstanding)}</span>
+                </div>
+              )}
+              {shop.accessorySaleOutstanding > 0 && (
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Accessories ({accPendingCount} sale{accPendingCount !== 1 ? "s" : ""})</span>
+                  <span>{formatPKR(shop.accessorySaleOutstanding)}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 pt-3 border-t border-gray-100">
             <button
@@ -463,6 +524,58 @@ export default function ShopDetailPage() {
         </div>
       </div>
 
+      {/* Accessory Sales section */}
+      {accessorySales.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">
+            Accessory Sales
+            {accPendingCount > 0 && (
+              <span className="ml-2 text-orange-500 font-normal text-xs">{accPendingCount} pending</span>
+            )}
+          </h2>
+          <div className="space-y-2">
+            {accessorySales.map((sale) => (
+              <Card key={sale.id} className="shadow-sm">
+                <CardContent className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm">
+                        {sale.lot?.name ?? "Accessory"} · ×{sale.quantity}
+                      </p>
+                      {sale.lot?.category && (
+                        <p className="text-xs text-gray-400">{sale.lot.category}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(sale.soldAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
+                        {" · "}{formatPKR(sale.sellingPricePerPiece)}/piece
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0 space-y-1">
+                      <p className="text-sm font-semibold text-gray-900">{formatPKR(sale.totalSellingPrice)}</p>
+                      {sale.pending > 0 ? (
+                        <Badge className="bg-orange-100 text-orange-700 border-0 text-xs">
+                          {formatPKR(sale.pending)} due
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-green-100 text-green-700 border-0 text-xs">Paid ✓</Badge>
+                      )}
+                    </div>
+                  </div>
+                  {sale.pending > 0 && (
+                    <Button
+                      variant="outline" size="sm" className="w-full h-8 mt-2 text-xs"
+                      onClick={() => { setAccSalePayDialog(sale); setAccSalePayAmount("") }}
+                    >
+                      Receive Payment for this accessory sale
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Payment History modal */}
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-w-lg flex flex-col max-h-[90vh] p-0 gap-0">
@@ -586,7 +699,7 @@ export default function ShopDetailPage() {
               <Input placeholder="e.g. Meezan Bank, Ali bhai" value={payExtraNotes} onChange={(e) => setPayExtraNotes(e.target.value)} className="h-11" />
             </div>
             <p className="text-xs text-gray-400">
-              Prior balances are cleared first, then oldest phone sales.
+              Order: prior balances → oldest phone sales → oldest accessory sales.
             </p>
           </div>
           <DialogFooter>
@@ -753,6 +866,57 @@ export default function ShopDetailPage() {
             <Button variant="outline" onClick={() => { setReceiveBalanceDialog(null); setBalanceMethod("Cash") }}>Cancel</Button>
             <Button onClick={handleReceivePriorBalance} disabled={receivingBalance}>
               {receivingBalance ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Accessory sale payment dialog */}
+      <Dialog open={accSalePayDialog !== null} onOpenChange={(v) => { if (!v) { setAccSalePayDialog(null); setAccSalePayMethod("Cash"); setAccSalePayExtraNotes("") } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Receive Accessory Payment</DialogTitle></DialogHeader>
+          {accSalePayDialog && (
+            <div className="space-y-3 py-1">
+              <Card className="bg-gray-50 border-0">
+                <CardContent className="p-3 text-sm">
+                  <p className="font-medium">{accSalePayDialog.lot?.name ?? "Accessory"} ×{accSalePayDialog.quantity}</p>
+                  <p className="text-gray-500 mt-0.5">Pending: {formatPKR(accSalePayDialog.pending)}</p>
+                </CardContent>
+              </Card>
+              <div className="space-y-1.5">
+                <Label>Amount (PKR) *</Label>
+                <Input
+                  type="number" min={1}
+                  value={accSalePayAmount}
+                  onChange={(e) => setAccSalePayAmount(e.target.value)}
+                  className="h-11 text-base"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Payment Method *</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {PAYMENT_METHODS.map((m) => (
+                    <button key={m} type="button" onClick={() => setAccSalePayMethod(m)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                        accSalePayMethod === m ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      )}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Extra Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+                <Input placeholder="e.g. Meezan Bank" value={accSalePayExtraNotes} onChange={(e) => setAccSalePayExtraNotes(e.target.value)} className="h-11" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAccSalePayDialog(null); setAccSalePayMethod("Cash"); setAccSalePayExtraNotes("") }}>Cancel</Button>
+            <Button onClick={handleAccSalePayment} disabled={accSalePaySaving}>
+              {accSalePaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
             </Button>
           </DialogFooter>
