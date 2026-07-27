@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
+import { fromAccessoryCategory } from "@/lib/utils/enum-mappers"
 
 export async function GET(req: Request) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       sales.map((s) => ({
         id: s.id,
-        lot: s.lot,
+        lot: s.lot ? { ...s.lot, category: fromAccessoryCategory(s.lot.category as string) } : null,
         quantity: s.quantity,
         sellingPricePerPiece: Number(s.sellingPricePerPiece),
         totalSellingPrice: Number(s.totalSellingPrice),

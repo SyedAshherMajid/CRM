@@ -19,6 +19,8 @@ export async function GET() {
       lotsForSuppliers,
       supplierDirectPayPerSupplier,
       priorBalRows,
+      accessoryShopStats,
+      accessoryLotStats,
     ] = await Promise.all([
 
       // 1. Available phones aggregate
@@ -146,6 +148,23 @@ export async function GET() {
           shop: { select: { name: true } },
         },
       }),
+
+      // 11. Accessory sale outstanding per shop
+      db.accessorySale.groupBy({
+        by: ["shopBuyerId"],
+        where: { saleType: "shop", shopBuyerId: { not: null } },
+        _sum: { totalSellingPrice: true, amountReceived: true },
+      }),
+
+      // 12. Accessory lots for supplier debt breakdown
+      db.accessoryLot.findMany({
+        select: {
+          name: true,
+          totalCost: true,
+          amountPaid: true,
+          supplier: { select: { id: true, name: true } },
+        },
+      }),
     ])
 
     // ── Stock ──────────────────────────────────────────────────────────────
@@ -188,6 +207,17 @@ export async function GET() {
       priorBalMap.get(pb.shopBuyerId)!.outstanding += net
     }
 
+    // Build per-shop accessory outstanding
+    const accShopMap = new Map<string, number>()
+    for (const a of accessoryShopStats) {
+      if (a.shopBuyerId) {
+        accShopMap.set(
+          a.shopBuyerId,
+          (a._sum.totalSellingPrice?.toNumber() ?? 0) - (a._sum.amountReceived?.toNumber() ?? 0)
+        )
+      }
+    }
+
     // Index phone-sale rows by shop ID
     const shopSalesById = new Map<string, { name: string; outstanding: number; pendingCount: number; totalSales: number }>()
     for (const r of shopOwingRows) {
@@ -199,17 +229,19 @@ export async function GET() {
       })
     }
 
-    // Merge phone sales + prior balances (include shops with only prior balances)
+    // Merge phone sales + prior balances + accessories (include shops with only prior balances/accessories)
     const allShopIds = new Set([
       ...shopOwingRows.map(r => r.shop_buyer_id),
       ...Array.from(priorBalMap.keys()),
+      ...Array.from(accShopMap.keys()),
     ])
     const shopsMapped = Array.from(allShopIds).map(id => {
       const sales = shopSalesById.get(id)
       const prior = priorBalMap.get(id)
+      const acc = accShopMap.get(id) ?? 0
       return {
         name: sales?.name ?? prior?.shopName ?? "Unknown",
-        outstanding: (sales?.outstanding ?? 0) + Math.max(0, prior?.outstanding ?? 0),
+        outstanding: (sales?.outstanding ?? 0) + Math.max(0, prior?.outstanding ?? 0) + Math.max(0, acc),
         pendingCount: sales?.pendingCount ?? 0,
         totalSales: sales?.totalSales ?? 0,
       }
@@ -236,7 +268,7 @@ export async function GET() {
       }
     }
 
-    // Group lots by supplier
+    // Group phone lots + accessory lots by supplier
     const supplierMap = new Map<string, {
       name: string
       lotDebt: number
@@ -253,6 +285,19 @@ export async function GET() {
       const entry = supplierMap.get(key)!
       entry.lotDebt += lotOwed
       entry.lots.push({ name: lot.name, owed: lotOwed })
+    }
+
+    for (const lot of accessoryLotStats) {
+      const key = lot.supplier?.id ?? "__no_supplier__"
+      const name = lot.supplier?.name ?? "No Supplier"
+      const lotOwed = Number(lot.totalCost) - Number(lot.amountPaid)
+      if (lotOwed <= 0) continue
+      if (!supplierMap.has(key)) {
+        supplierMap.set(key, { name, lotDebt: 0, lots: [] })
+      }
+      const entry = supplierMap.get(key)!
+      entry.lotDebt += lotOwed
+      entry.lots.push({ name: `${lot.name} (accessories)`, owed: lotOwed })
     }
 
     const suppliersMapped = Array.from(supplierMap.entries()).map(([key, entry]) => {

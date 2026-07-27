@@ -7,8 +7,8 @@ export async function GET() {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Parallel: shop rows + sale aggregates + prior balance aggregates
-    const [shops, saleStats, priorBalStats] = await Promise.all([
+    // Parallel: shop rows + phone sale aggregates + prior balance aggregates + accessory aggregates
+    const [shops, saleStats, priorBalStats, accStats] = await Promise.all([
       db.shopBuyer.findMany({ orderBy: { createdAt: "desc" } }),
       db.$queryRaw<Array<{
         shop_buyer_id: string
@@ -33,6 +33,11 @@ export async function GET() {
         by: ["shopBuyerId"],
         _sum: { amount: true, amountPaid: true },
       }),
+      db.accessorySale.groupBy({
+        by: ["shopBuyerId"],
+        where: { saleType: "shop", shopBuyerId: { not: null } },
+        _sum: { totalSellingPrice: true, amountReceived: true },
+      }),
     ])
 
     const statsMap = new Map(saleStats.map((s) => [s.shop_buyer_id, s]))
@@ -42,12 +47,21 @@ export async function GET() {
         (p._sum.amount?.toNumber() ?? 0) - (p._sum.amountPaid?.toNumber() ?? 0),
       ])
     )
+    const accMap = new Map(
+      accStats.map((a) => [
+        a.shopBuyerId as string,
+        (a._sum.totalSellingPrice?.toNumber() ?? 0) - (a._sum.amountReceived?.toNumber() ?? 0),
+      ])
+    )
 
     return NextResponse.json(
       shops.map((shop) => {
         const stats = statsMap.get(shop.id)
-        const saleOutstanding = stats ? Number(stats.total_selling) - Number(stats.total_received) : 0
-        const outstanding = saleOutstanding + (priorBalMap.get(shop.id) ?? 0)
+        const phoneSaleOutstanding = stats ? Number(stats.total_selling) - Number(stats.total_received) : 0
+        const outstanding =
+          phoneSaleOutstanding +
+          (priorBalMap.get(shop.id) ?? 0) +
+          (accMap.get(shop.id) ?? 0)
         return {
           id: shop.id,
           name: shop.name,
