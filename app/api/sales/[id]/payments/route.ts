@@ -14,12 +14,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!amount || Number(amount) <= 0)
       return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 })
 
-    // Read, check, and write inside a single transaction so two concurrent payments
-    // on the same sale cannot both read the same amountReceived and overwrite each other.
     const result = await db.$transaction(async (tx) => {
       const sale = await tx.sale.findUnique({
         where: { id },
-        select: { sellingPrice: true, amountReceived: true },
+        select: {
+          sellingPrice: true, amountReceived: true,
+          saleType: true, shopBuyerId: true,
+          phone: { select: { model: true, storage: true } },
+        },
       })
 
       if (!sale) {
@@ -42,6 +44,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await tx.salePayment.create({
         data: { saleId: id, amount: actualAmount, recordedBy: user.id, notes: notes?.trim() || null },
       })
+
+      // If this is a shop sale, also log it in ShopPaymentLog for the payment history display
+      if (sale.saleType === "shop" && sale.shopBuyerId) {
+        await tx.shopPaymentLog.create({
+          data: {
+            shopBuyerId: sale.shopBuyerId,
+            amount: actualAmount,
+            notes: notes?.trim() || null,
+            description: `Phone: ${sale.phone.model} (${sale.phone.storage})`,
+            recordedBy: user.id,
+          },
+        })
+      }
 
       return { newAmountReceived }
     })

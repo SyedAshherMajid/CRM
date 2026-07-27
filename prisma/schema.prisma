@@ -164,6 +164,7 @@ model ShopPaymentLog {
   amount      Decimal  @db.Decimal(12, 2)
   receivedAt  DateTime @default(now()) @map("received_at")
   notes       String?
+  description String?
   recordedBy  String   @map("recorded_by")
 
   shop     ShopBuyer @relation(fields: [shopBuyerId], references: [id], onDelete: Cascade)

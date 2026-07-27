@@ -12,11 +12,12 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { ArrowLeft, Plus, Pencil, Calendar, Loader2, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import { ArrowLeft, Plus, Pencil, Calendar, Loader2, Trash2, History, X } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
 import { maskIMEI } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
 
+interface PaymentLogItem { id: string; amount: string; receivedAt: string; notes: string | null; description: string | null }
 interface SalePaymentItem { id: string; amount: string; receivedAt: string; notes: string | null }
 interface SaleItem {
   id: string; sellingPrice: string; amountReceived: string; soldAt: string
@@ -49,7 +50,7 @@ function getMethodInfo(notes: string | null) {
 interface Shop {
   id: string; name: string; phone: string | null; address: string | null; notes: string | null
   outstanding: number; saleOutstanding: number
-  allPayments: SalePaymentItem[]; sales: SaleItem[]
+  allPayments: PaymentLogItem[]; sales: SaleItem[]
   priorBalances: PriorBalance[]
 }
 
@@ -95,8 +96,8 @@ export default function ShopDetailPage() {
   const [receiveBalanceAmount, setReceiveBalanceAmount] = useState("")
   const [receivingBalance, setReceivingBalance] = useState(false)
 
-  // Payment history expand/collapse
-  const [historyExpanded, setHistoryExpanded] = useState(false)
+  // Payment history modal
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Payment method state for each dialog (Cash is the default)
   const [payMethod, setPayMethod] = useState<PaymentMethod>("Cash")
@@ -307,53 +308,21 @@ export default function ShopDetailPage() {
             )}
           </div>
 
-          {shop.allPayments.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setHistoryExpanded((v) => !v)}
-                className="flex items-center justify-between w-full mb-2"
-              >
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Payment History ({shop.allPayments.length})
-                </p>
-                {historyExpanded
-                  ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-                  : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-              </button>
-
-              <div className="space-y-2">
-                {(historyExpanded ? shop.allPayments : shop.allPayments.slice(0, 3)).map((p) => {
-                  const info = getMethodInfo(p.notes)
-                  return (
-                    <div key={p.id} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-1.5 text-gray-500 flex-wrap">
-                        <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}</span>
-                        {info && (
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", info.color)}>{info.method}</span>
-                        )}
-                        {info?.detail && <span className="text-gray-400 text-xs">· {info.detail}</span>}
-                      </div>
-                      <span className="font-medium text-gray-800 flex-shrink-0 ml-2">{formatPKR(Number(p.amount))}</span>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {shop.allPayments.length > 3 && (
-                <button
-                  type="button"
-                  onClick={() => setHistoryExpanded((v) => !v)}
-                  className="mt-2 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-                >
-                  {historyExpanded
-                    ? <><ChevronUp className="w-3 h-3" /> Show less</>
-                    : <><ChevronDown className="w-3 h-3" /> Show all {shop.allPayments.length} payments</>}
-                </button>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors"
+            >
+              <History className="w-4 h-4" />
+              Payment History
+              {shop.allPayments.length > 0 && (
+                <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full font-medium">
+                  {shop.allPayments.length}
+                </span>
               )}
-            </div>
-          )}
+            </button>
+          </div>
         </CardContent>
       </Card>
 
@@ -493,6 +462,89 @@ export default function ShopDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Payment History modal */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-lg flex flex-col max-h-[90vh] p-0 gap-0">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b flex-shrink-0">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Payment History</h2>
+              <p className="text-xs text-gray-400 mt-0.5">{shop.name} · {shop.allPayments.length} payment{shop.allPayments.length !== 1 ? "s" : ""} recorded</p>
+            </div>
+            <button onClick={() => setHistoryOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Payment list */}
+          <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+            {shop.allPayments.length === 0 ? (
+              <div className="text-center py-16">
+                <History className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+                <p className="text-sm font-medium text-gray-400">No payments recorded yet</p>
+                <p className="text-xs text-gray-300 mt-1">Payments will appear here after they are recorded</p>
+              </div>
+            ) : (
+              shop.allPayments.map((p) => {
+                const info = getMethodInfo(p.notes)
+                return (
+                  <div key={p.id} className="bg-white border border-gray-100 rounded-xl p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        {/* Date */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>{new Date(p.receivedAt).toLocaleDateString("en-PK", {
+                            day: "numeric", month: "short", year: "numeric",
+                            hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi",
+                          })}</span>
+                        </div>
+                        {/* Method badge + extra detail */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {info ? (
+                            <span className={cn("text-xs px-2 py-0.5 rounded font-medium", info.color)}>
+                              {info.method}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-600">
+                              Not specified
+                            </span>
+                          )}
+                          {info?.detail && (
+                            <span className="text-xs text-gray-400">· {info.detail}</span>
+                          )}
+                        </div>
+                        {/* What it was applied to */}
+                        {p.description && (
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <span className="text-gray-300">→</span>
+                            {p.description}
+                          </p>
+                        )}
+                      </div>
+                      {/* Amount */}
+                      <p className="text-sm font-bold text-gray-900 flex-shrink-0">
+                        {formatPKR(Number(p.amount))}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Total footer */}
+          {shop.allPayments.length > 0 && (
+            <div className="border-t px-5 py-3 flex items-center justify-between flex-shrink-0 bg-gray-50">
+              <p className="text-sm text-gray-500">Total received</p>
+              <p className="text-base font-bold text-green-600">
+                {formatPKR(shop.allPayments.reduce((sum, p) => sum + Number(p.amount), 0))}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk payment dialog */}
       <Dialog open={payDialog} onOpenChange={(v) => { if (!v) { setPayDialog(false); setPayMethod("Cash"); setPayExtraNotes("") } }}>

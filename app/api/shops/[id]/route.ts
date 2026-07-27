@@ -39,12 +39,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         _sum: { sellingPrice: true, amountReceived: true },
       }),
 
-      // Payment history — from ShopPaymentLog so prior balance payments are included
+      // Payment history — from ShopPaymentLog so all payment types are included
       db.shopPaymentLog.findMany({
         where: { shopBuyerId: id },
         orderBy: { receivedAt: "desc" },
-        take: 200,
-        select: { id: true, amount: true, receivedAt: true, notes: true },
+        take: 500,
+        select: { id: true, amount: true, receivedAt: true, notes: true, description: true },
       }),
 
       // Prior balances (historical debts not linked to specific phones)

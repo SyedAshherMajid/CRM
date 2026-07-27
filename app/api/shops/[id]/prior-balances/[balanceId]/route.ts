@@ -21,7 +21,7 @@ export async function PATCH(
     const updated = await db.$transaction(async (tx) => {
       const balance = await tx.shopPriorBalance.findUnique({
         where: { id: balanceId, shopBuyerId: id },
-        select: { id: true, amount: true, amountPaid: true },
+        select: { id: true, amount: true, amountPaid: true, description: true },
       })
 
       if (!balance) {
@@ -39,13 +39,26 @@ export async function PATCH(
 
       const applying = Math.min(Number(amount), remaining)
 
-      return await tx.shopPriorBalance.update({
+      const updated = await tx.shopPriorBalance.update({
         where: { id: balanceId },
         data: {
           amountPaid: Number(balance.amountPaid) + applying,
           ...(notes?.trim() && { paymentNotes: notes.trim() }),
         },
       })
+
+      // Log this payment for the payment history display
+      await tx.shopPaymentLog.create({
+        data: {
+          shopBuyerId: id,
+          amount: applying,
+          notes: notes?.trim() || null,
+          description: `Prior balance: ${balance.description}`,
+          recordedBy: user.id,
+        },
+      })
+
+      return updated
     })
 
     return NextResponse.json({

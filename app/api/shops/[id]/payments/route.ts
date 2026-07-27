@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 
-// Distributes a bulk payment from a shop across pending sales (oldest first / FIFO)
+// Distributes a bulk payment from a shop across pending items (FIFO: prior balances first, then phone sales oldest first)
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser()
@@ -18,30 +18,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const shop = await db.shopBuyer.findUnique({ where: { id }, select: { id: true } })
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 })
 
-    // Fetch all outstanding items and distribute payment inside a single transaction
-    // to prevent race conditions from concurrent payments.
-    // Order: prior balances (oldest first), then phone sales (oldest first).
     await db.$transaction(async (tx) => {
       const [priorBalances, pendingSales] = await Promise.all([
         tx.shopPriorBalance.findMany({
           where: { shopBuyerId: id },
           orderBy: { createdAt: "asc" },
-          select: { id: true, amount: true, amountPaid: true },
+          select: { id: true, amount: true, amountPaid: true, description: true },
         }),
         tx.sale.findMany({
           where: { shopBuyerId: id, saleType: "shop" },
           orderBy: { soldAt: "asc" },
-          select: { id: true, sellingPrice: true, amountReceived: true },
+          select: {
+            id: true, sellingPrice: true, amountReceived: true,
+            phone: { select: { model: true, storage: true } },
+          },
         }),
       ])
 
       const priorOutstanding = priorBalances.reduce(
-        (sum, pb) => sum + (Number(pb.amount) - Number(pb.amountPaid)),
-        0
+        (sum, pb) => sum + (Number(pb.amount) - Number(pb.amountPaid)), 0
       )
       const saleOutstanding = pendingSales.reduce(
-        (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)),
-        0
+        (sum, s) => sum + (Number(s.sellingPrice) - Number(s.amountReceived)), 0
       )
       const totalOutstanding = priorOutstanding + saleOutstanding
 
@@ -52,6 +50,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
 
       let remaining = Math.min(Number(amount), totalOutstanding)
+      const appliedTotal = remaining
+
+      // Track what was applied for the description
+      const descParts: string[] = []
+      let priorApplied = 0
+      const phonesApplied: string[] = []
 
       // Step 1: Clear prior balances first (oldest first)
       for (const pb of priorBalances) {
@@ -61,6 +65,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         const applying = Math.min(remaining, pbRemaining)
         remaining -= applying
+        priorApplied += applying
 
         await tx.shopPriorBalance.update({
           where: { id: pb.id },
@@ -71,6 +76,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         })
       }
 
+      if (priorApplied > 0) descParts.push("Prior balance")
+
       // Step 2: Apply the rest to phone sales (oldest first)
       for (const sale of pendingSales) {
         if (remaining <= 0) break
@@ -79,6 +86,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         const applying = Math.min(remaining, pending)
         remaining -= applying
+        phonesApplied.push(`${sale.phone.model} (${sale.phone.storage})`)
 
         await tx.sale.update({
           where: { id: sale.id },
@@ -89,12 +97,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         })
       }
 
-      // Always log the total payment amount for the payment history display
+      if (phonesApplied.length === 1) {
+        descParts.push(`Phone: ${phonesApplied[0]}`)
+      } else if (phonesApplied.length > 1) {
+        descParts.push(`${phonesApplied.length} phones`)
+      }
+
+      // Log this payment event for the payment history display
       await tx.shopPaymentLog.create({
         data: {
           shopBuyerId: id,
-          amount: Math.min(Number(amount), totalOutstanding),
+          amount: appliedTotal,
           notes: notes?.trim() || null,
+          description: descParts.join(" + ") || null,
           recordedBy: user.id,
         },
       })
