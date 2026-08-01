@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { ArrowLeft, Copy, Pencil, AlertTriangle, RotateCcw, CheckCircle, Loader2, Trash2 } from "lucide-react"
 import { formatPKR } from "@/lib/utils/currency"
+import { stripImeiSuffix } from "@/lib/utils/imei"
 import { cn } from "@/lib/utils"
 import { CONDITION_OPTIONS } from "@/lib/phone-models"
 
@@ -185,7 +186,7 @@ export default function PhoneDetailPage() {
 
   function copyIMEI() {
     if (!phone) return
-    navigator.clipboard.writeText(phone.imei)
+    navigator.clipboard.writeText(stripImeiSuffix(phone.imei))
     toast.success("IMEI copied")
   }
 
@@ -231,7 +232,7 @@ export default function PhoneDetailPage() {
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">IMEI Number</p>
           <div className="flex items-center justify-between gap-3">
             <p className="font-mono text-lg font-semibold text-gray-900 tracking-wider">
-              {phone.imei}
+              {stripImeiSuffix(phone.imei)}
             </p>
             <Button variant="ghost" size="icon" onClick={copyIMEI} className="h-8 w-8 flex-shrink-0">
               <Copy className="w-4 h-4 text-gray-400" />
@@ -553,7 +554,7 @@ export default function PhoneDetailPage() {
             <DialogTitle>Delete Phone?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-gray-600 px-1">
-            This will permanently delete <span className="font-semibold">{phone.model}</span> (IMEI: {phone.imei}) from the system. This cannot be undone.
+            This will permanently delete <span className="font-semibold">{phone.model}</span> (IMEI: {stripImeiSuffix(phone.imei)}) from the system. This cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOpen(false)} className="h-11">Cancel</Button>

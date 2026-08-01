@@ -50,10 +50,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "IMEI must have at least 4 digits" }, { status: 400 })
     }
 
-    // Check if IMEI already exists
-    const existingPhone = await db.phone.findUnique({ where: { imei: cleanedIMEI } })
-    if (existingPhone) {
-      return NextResponse.json({ error: "IMEI already exists in system" }, { status: 400 })
+    // Check for existing phones with this base IMEI (exact or with re-purchase suffix)
+    const existingPhones = await db.phone.findMany({
+      where: {
+        OR: [
+          { imei: cleanedIMEI },
+          { imei: { startsWith: `${cleanedIMEI}#` } },
+        ],
+      },
+      select: { imei: true, status: true },
+    })
+
+    // Block if any available phone already has this IMEI
+    if (existingPhones.some((p) => p.status === "available")) {
+      return NextResponse.json({ error: "This IMEI is already in stock" }, { status: 400 })
+    }
+
+    // For re-purchases (all existing are sold): compute next generation suffix
+    let storedIMEI = cleanedIMEI
+    if (existingPhones.length > 0) {
+      let maxGen = 0
+      for (const p of existingPhones) {
+        if (p.imei === cleanedIMEI) maxGen = Math.max(maxGen, 1)
+        const m = p.imei.match(/#(\d+)$/)
+        if (m) maxGen = Math.max(maxGen, parseInt(m[1]))
+      }
+      storedIMEI = `${cleanedIMEI}#${maxGen + 1}`
     }
 
     // Create a temporary lot for single phones (or create phone without lot)
@@ -89,7 +111,7 @@ export async function POST(req: Request) {
         model,
         storage: mapStorage(storage),
         color,
-        imei: cleanedIMEI,
+        imei: storedIMEI,
         condition: mapCondition(condition),
         batteryHealth: batteryHealth || null,
         costPrice: Number(costPrice),
@@ -106,7 +128,7 @@ export async function POST(req: Request) {
       phone: {
         id: phone.id,
         model: phone.model,
-        imei: phone.imei,
+        imei: phone.imei.split("#")[0],
       },
     })
   } catch (err) {

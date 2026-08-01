@@ -66,10 +66,55 @@ export async function POST(req: Request) {
     if (uniqueImeis.size !== imeis.length)
       return NextResponse.json({ error: "Duplicate IMEI numbers in this submission" }, { status: 400 })
 
+    // Map submitted IMEI → stored IMEI (adds #N suffix for re-purchased phones)
+    const imeiToStored = new Map<string, string>()
+
     if (imeis.length > 0) {
-      const existing = await db.phone.findFirst({ where: { imei: { in: imeis } } })
-      if (existing)
-        return NextResponse.json({ error: `IMEI ${existing.imei} already exists in the system` }, { status: 400 })
+      // Batch-fetch all existing records matching these IMEIs (exact or with re-purchase suffix)
+      const existingPhones = await db.phone.findMany({
+        where: {
+          OR: [
+            { imei: { in: imeis } },
+            ...imeis.map((imei: string) => ({ imei: { startsWith: `${imei}#` } })),
+          ],
+        },
+        select: { imei: true, status: true },
+      })
+
+      // Group by base IMEI (strip suffix)
+      const byBase = new Map<string, Array<{ imei: string; status: string }>>()
+      for (const p of existingPhones) {
+        const base = p.imei.split("#")[0]
+        if (!byBase.has(base)) byBase.set(base, [])
+        byBase.get(base)!.push(p)
+      }
+
+      // Block if any submitted IMEI is already available in stock
+      const conflictIMEI = imeis.find((imei: string) =>
+        (byBase.get(imei) ?? []).some((p) => p.status === "available")
+      )
+      if (conflictIMEI) {
+        return NextResponse.json(
+          { error: `IMEI ${conflictIMEI} is already in stock` },
+          { status: 400 }
+        )
+      }
+
+      // Build stored IMEI for each submitted IMEI (adds #N for re-purchases)
+      for (const imei of imeis) {
+        const records = byBase.get(imei) ?? []
+        if (records.length === 0) {
+          imeiToStored.set(imei, imei)
+        } else {
+          let maxGen = 0
+          for (const p of records) {
+            if (p.imei === imei) maxGen = Math.max(maxGen, 1)
+            const m = p.imei.match(/#(\d+)$/)
+            if (m) maxGen = Math.max(maxGen, parseInt(m[1]))
+          }
+          imeiToStored.set(imei, `${imei}#${maxGen + 1}`)
+        }
+      }
     }
 
     const paid = Number(amountPaid) || 0
@@ -98,7 +143,7 @@ export async function POST(req: Request) {
             model: p.model,
             storage: toStorage(p.storage),
             color: p.color,
-            imei: p.imei,
+            imei: imeiToStored.get(p.imei) ?? p.imei,
             condition: toCondition(p.condition),
             batteryHealth: p.batteryHealth || null,
             costPrice: Number(p.costPrice),

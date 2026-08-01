@@ -20,14 +20,10 @@ export async function GET(req: Request) {
     const where: Prisma.PhoneWhereInput = {}
 
     if (search) {
-      const isDigitOnly = /^\d+$/.test(search)
       where.OR = [
-        // IMEI search: if digits-only, use endsWith (last N digits match)
-        // endsWith = LIKE '%value' which the DB can optimize for short suffix searches
-        // vs contains = LIKE '%value%' which always full-scans
-        isDigitOnly
-          ? { imei: { endsWith: search } }
-          : { imei: { contains: search } },
+        // Use contains so partial IMEI search works even for re-purchased phones
+        // whose stored IMEI has a #N suffix (endsWith would miss them)
+        { imei: { contains: search } },
         { model: { contains: search, mode: "insensitive" } },
       ]
     }
