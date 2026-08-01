@@ -305,6 +305,18 @@ model DirectProfit {
   @@map("direct_profits")
 }
 
+// ─── Customer contacts (manually pre-registered customers) ───────────────────
+
+model CustomerContact {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("customer_contacts")
+}
+
 // ─── Accessories ──────────────────────────────────────────────────────────────
 
 model AccessoryLot {

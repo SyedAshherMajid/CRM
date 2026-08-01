@@ -77,46 +77,99 @@ export async function GET(req: Request) {
       })
     }
 
-    // ── List mode: return all customers grouped by name ──────────────────────
-    const rows = await db.$queryRaw<
-      Array<{
-        customer_name: string
-        total_selling: string
-        total_received: string
-        total_sales: bigint
-        pending_count: bigint
-        last_sale_at: Date | null
-      }>
-    >`
-      SELECT
-        customer_name,
-        COALESCE(SUM(selling_price), 0)::text              AS total_selling,
-        COALESCE(SUM(amount_received), 0)::text            AS total_received,
-        COUNT(*)::bigint                                    AS total_sales,
-        COUNT(*) FILTER (WHERE selling_price > amount_received)::bigint AS pending_count,
-        MAX(sold_at)                                        AS last_sale_at
-      FROM sales
-      WHERE sale_type = 'customer'
-        AND customer_name IS NOT NULL
-        AND customer_name != ''
-      GROUP BY customer_name
-      ORDER BY
-        (SUM(selling_price) - SUM(amount_received)) DESC,
-        customer_name
-    `
+    // ── List mode: return all customers (from sales + manually added contacts) ─
+    const [rows, contacts] = await Promise.all([
+      db.$queryRaw<
+        Array<{
+          customer_name: string
+          total_selling: string
+          total_received: string
+          total_sales: bigint
+          pending_count: bigint
+          last_sale_at: Date | null
+        }>
+      >`
+        SELECT
+          customer_name,
+          COALESCE(SUM(selling_price), 0)::text              AS total_selling,
+          COALESCE(SUM(amount_received), 0)::text            AS total_received,
+          COUNT(*)::bigint                                    AS total_sales,
+          COUNT(*) FILTER (WHERE selling_price > amount_received)::bigint AS pending_count,
+          MAX(sold_at)                                        AS last_sale_at
+        FROM sales
+        WHERE sale_type = 'customer'
+          AND customer_name IS NOT NULL
+          AND customer_name != ''
+        GROUP BY customer_name
+      `,
+      db.customerContact.findMany({ orderBy: { name: "asc" } }),
+    ])
 
-    return NextResponse.json(
-      rows.map((r) => ({
-        name: r.customer_name,
-        outstanding: Number(r.total_selling) - Number(r.total_received),
-        pendingCount: Number(r.pending_count),
-        totalSales: Number(r.total_sales),
-        lastSaleAt: r.last_sale_at,
-      }))
+    // Build map from sales data
+    const saleMap = new Map(
+      rows.map((r) => [
+        r.customer_name,
+        {
+          outstanding: Number(r.total_selling) - Number(r.total_received),
+          pendingCount: Number(r.pending_count),
+          totalSales: Number(r.total_sales),
+          lastSaleAt: r.last_sale_at,
+        },
+      ])
     )
+
+    // Merge: sales-derived names + manually-added contacts (deduped by name)
+    const allNames = new Set([...saleMap.keys(), ...contacts.map((c) => c.name)])
+
+    const result = Array.from(allNames)
+      .map((name) => {
+        const sale = saleMap.get(name)
+        return {
+          name,
+          outstanding: sale?.outstanding ?? 0,
+          pendingCount: sale?.pendingCount ?? 0,
+          totalSales: sale?.totalSales ?? 0,
+          lastSaleAt: sale?.lastSaleAt ?? null,
+        }
+      })
+      .sort((a, b) => b.outstanding - a.outstanding || a.name.localeCompare(b.name))
+
+    return NextResponse.json(result)
   } catch (err) {
     console.error("[GET /api/customers]", err)
     return NextResponse.json({ error: "Failed to load customers" }, { status: 500 })
+  }
+}
+
+// Create a standalone customer contact (no sale required)
+export async function POST(req: Request) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { name, phone, notes } = await req.json()
+    if (!name?.trim()) return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
+
+    const trimmed = name.trim()
+
+    // Check if a contact with this name already exists
+    const existing = await db.customerContact.findUnique({ where: { name: trimmed } })
+    if (existing) {
+      return NextResponse.json({ error: "A customer with this name already exists" }, { status: 400 })
+    }
+
+    const contact = await db.customerContact.create({
+      data: {
+        name: trimmed,
+        phone: phone?.trim() || null,
+        notes: notes?.trim() || null,
+      },
+    })
+
+    return NextResponse.json(contact, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/customers]", err)
+    return NextResponse.json({ error: "Failed to add customer" }, { status: 500 })
   }
 }
 

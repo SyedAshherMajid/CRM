@@ -238,6 +238,12 @@ function CustomersTab() {
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
 
+  // Add customer dialog
+  const [addOpen, setAddOpen] = useState(false)
+  const [addName, setAddName] = useState("")
+  const [addPhone, setAddPhone] = useState("")
+  const [addSaving, setAddSaving] = useState(false)
+
   async function loadCustomers() {
     setLoading(true)
     try {
@@ -252,6 +258,31 @@ function CustomersTab() {
 
   useEffect(() => { loadCustomers() }, [])
 
+  async function handleAddCustomer() {
+    if (!addName.trim()) return
+    setAddSaving(true)
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: addName, phone: addPhone }),
+      })
+      if (res.ok) {
+        toast.success("Customer added")
+        setAddOpen(false)
+        setAddName(""); setAddPhone("")
+        loadCustomers()
+      } else {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to add customer")
+      }
+    } catch {
+      toast.error("Failed to add customer")
+    } finally {
+      setAddSaving(false)
+    }
+  }
+
   const filtered = search.trim()
     ? customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : customers
@@ -261,6 +292,14 @@ function CustomersTab() {
 
   return (
     <>
+      {/* Header row with Add Customer button */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{loading ? "" : `${customers.length} customer${customers.length !== 1 ? "s" : ""}`}</p>
+        <Button onClick={() => setAddOpen(true)} size="sm" className="h-9">
+          <Plus className="w-4 h-4 mr-1" /> Add Customer
+        </Button>
+      </div>
+
       {/* Search */}
       <Input
         placeholder="Search customer name..."
@@ -314,6 +353,44 @@ function CustomersTab() {
           onClose={() => { setSelected(null); loadCustomers() }}
         />
       )}
+
+      {/* Add customer dialog */}
+      <Dialog open={addOpen} onOpenChange={(v) => { if (!v) { setAddOpen(false); setAddName(""); setAddPhone("") } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Customer</DialogTitle>
+            <DialogDescription className="sr-only">Add a new customer</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Customer Name *</Label>
+              <Input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g. Ahmed Malik"
+                className="h-11"
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomer() }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone <span className="text-gray-400 font-normal">(optional)</span></Label>
+              <Input
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="03xx-xxxxxxx"
+                className="h-11"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setAddName(""); setAddPhone("") }}>Cancel</Button>
+            <Button onClick={handleAddCustomer} disabled={addSaving || !addName.trim()}>
+              {addSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Add Customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
