@@ -191,6 +191,16 @@ export async function PATCH(req: Request) {
       data: { customerName: trimmedNew },
     })
 
+    // Also rename the CustomerContact record if one exists.
+    // If trimmedNew is already taken as a contact, delete the old one instead
+    // (the sales merge means both names now resolve to trimmedNew).
+    const newContactExists = await db.customerContact.findUnique({ where: { name: trimmedNew } })
+    if (newContactExists) {
+      await db.customerContact.deleteMany({ where: { name: oldName.trim() } })
+    } else {
+      await db.customerContact.updateMany({ where: { name: oldName.trim() }, data: { name: trimmedNew } })
+    }
+
     return NextResponse.json({ success: true, updated: result.count })
   } catch (err) {
     console.error("[PATCH /api/customers]", err)
@@ -212,6 +222,9 @@ export async function DELETE(req: Request) {
       where: { saleType: "customer", customerName: name.trim() },
       data: { customerName: null },
     })
+
+    // Also remove the CustomerContact record if one exists
+    await db.customerContact.deleteMany({ where: { name: name.trim() } })
 
     return NextResponse.json({ success: true, updated: result.count })
   } catch (err) {
