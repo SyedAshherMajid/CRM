@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     const { saleType } = body
 
     if (saleType === "customer") {
-      const { phoneId, customerName, sellingPrice, amountReceived, notes } = body
+      const { phoneId, customerName, sellingPrice, amountReceived, notes, soldAt } = body
 
       if (!phoneId || !sellingPrice)
         return NextResponse.json({ error: "Phone and selling price are required" }, { status: 400 })
@@ -56,6 +56,14 @@ export async function POST(req: Request) {
       const phone = await db.phone.findUnique({ where: { id: phoneId }, select: { status: true } })
       if (!phone || phone.status !== "available")
         return NextResponse.json({ error: "Phone is not available for sale" }, { status: 400 })
+
+      // Parse optional backdated sale date (sent as "YYYY-MM-DD", interpreted as PKT midnight)
+      let saleDate: Date | undefined
+      if (soldAt) {
+        saleDate = new Date(`${soldAt}T00:00:00+05:00`)
+        if (isNaN(saleDate.getTime()))
+          return NextResponse.json({ error: "Invalid sale date" }, { status: 400 })
+      }
 
       const received = Math.min(Number(amountReceived) || 0, Number(sellingPrice))
 
@@ -69,6 +77,7 @@ export async function POST(req: Request) {
             amountReceived: received,
             notes: notes?.trim() || null,
             soldBy: user.id,
+            ...(saleDate && { soldAt: saleDate }),
           },
         })
         await tx.phone.update({ where: { id: phoneId }, data: { status: "sold" } })
@@ -83,7 +92,7 @@ export async function POST(req: Request) {
       return NextResponse.json(sale, { status: 201 })
 
     } else if (saleType === "shop") {
-      const { shopBuyerId, phones, amountReceived, notes } = body
+      const { shopBuyerId, phones, amountReceived, notes, soldAt } = body
 
       if (!shopBuyerId || !phones?.length)
         return NextResponse.json({ error: "Shop and at least one phone are required" }, { status: 400 })
@@ -96,6 +105,14 @@ export async function POST(req: Request) {
       const unavailable = existing.filter((p) => p.status !== "available")
       if (unavailable.length > 0)
         return NextResponse.json({ error: "One or more phones are no longer available" }, { status: 400 })
+
+      // Parse optional backdated sale date (sent as "YYYY-MM-DD", interpreted as PKT midnight)
+      let saleDate: Date | undefined
+      if (soldAt) {
+        saleDate = new Date(`${soldAt}T00:00:00+05:00`)
+        if (isNaN(saleDate.getTime()))
+          return NextResponse.json({ error: "Invalid sale date" }, { status: 400 })
+      }
 
       let remainingPayment = Number(amountReceived) || 0
 
@@ -115,6 +132,7 @@ export async function POST(req: Request) {
               amountReceived: phoneReceived,
               notes: notes?.trim() || null,
               soldBy: user.id,
+              ...(saleDate && { soldAt: saleDate }),
             },
           })
           await tx.phone.update({ where: { id: p.phoneId }, data: { status: "sold" } })

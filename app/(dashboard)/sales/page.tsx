@@ -127,6 +127,7 @@ function CustomerSale() {
   const [amountReceived, setAmountReceived] = useState("")
   const [customerName, setCustomerName] = useState("")
   const [saleNotes, setSaleNotes] = useState("")
+  const [saleDate, setSaleDate] = useState(todayPKT())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -143,7 +144,7 @@ function CustomerSale() {
 
   function reset() {
     setStep(1); setSearch(""); setResults([]); setSelected(null)
-    setSellingPrice(""); setAmountReceived(""); setCustomerName(""); setSaleNotes("")
+    setSellingPrice(""); setAmountReceived(""); setCustomerName(""); setSaleNotes(""); setSaleDate(todayPKT())
   }
 
   async function handleConfirm() {
@@ -159,6 +160,7 @@ function CustomerSale() {
         sellingPrice: Number(sellingPrice),
         amountReceived: Number(amountReceived) || 0,
         notes: saleNotes || null,
+        soldAt: saleDate,
       }),
     })
     if (!res.ok) {
@@ -281,6 +283,16 @@ function CustomerSale() {
             className="h-11"
           />
         </div>
+        <div className="space-y-1.5">
+          <Label>Sale Date <span className="text-gray-400 font-normal">(change only if backdating)</span></Label>
+          <Input
+            type="date"
+            value={saleDate}
+            onChange={(e) => setSaleDate(e.target.value)}
+            max={todayPKT()}
+            className="h-11"
+          />
+        </div>
       </div>
 
       <Button
@@ -312,6 +324,7 @@ function CustomerSale() {
             { label: "Received Now", value: formatPKR(Number(amountReceived) || 0) },
             ...(pending && pending > 0 ? [{ label: "Still Pending", value: formatPKR(pending), highlight: "orange" as const }] : []),
             ...(customerName ? [{ label: "Customer", value: customerName }] : []),
+            { label: "Sale Date", value: new Date(`${saleDate}T00:00:00`).toLocaleDateString("en-PK", { day: "numeric", month: "long", year: "numeric" }) },
           ].map(({ label, value, highlight }) => (
             <div key={label} className="flex justify-between items-center py-2.5 border-b border-gray-50 last:border-0">
               <span className="text-sm text-gray-500">{label}</span>
@@ -349,6 +362,7 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
   const [cart, setCart] = useState<PhoneWithPrice[]>([])
   const [amountReceived, setAmountReceived] = useState("")
   const [saleNotes, setSaleNotes] = useState("")
+  const [saleDate, setSaleDate] = useState(todayPKT())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -367,7 +381,7 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
 
   function reset() {
     setStep(1); setSelectedShop(null); setShopSearch(""); setSearch(""); setResults([])
-    setCart([]); setAmountReceived(""); setSaleNotes("")
+    setCart([]); setAmountReceived(""); setSaleNotes(""); setSaleDate(todayPKT())
   }
 
   function addToCart(phone: AvailablePhone) {
@@ -400,6 +414,7 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
         phones: cart.map((c) => ({ phoneId: c.phone.id, sellingPrice: Number(c.sellingPrice) })),
         amountReceived: Number(amountReceived) || 0,
         notes: saleNotes || null,
+        soldAt: saleDate,
       }),
     })
     if (!res.ok) {
@@ -610,6 +625,16 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
             className="h-11"
           />
         </div>
+        <div className="space-y-1.5">
+          <Label>Sale Date <span className="text-gray-400 font-normal">(change only if backdating)</span></Label>
+          <Input
+            type="date"
+            value={saleDate}
+            onChange={(e) => setSaleDate(e.target.value)}
+            max={todayPKT()}
+            className="h-11"
+          />
+        </div>
       </div>
 
       <Button className="w-full h-12" onClick={() => setStep(4)}>
@@ -659,6 +684,12 @@ function ShopSale({ shops, onShopAdded }: { shops: Shop[]; onShopAdded: (s: Shop
                 <span className="font-semibold text-orange-600">{formatPKR(pending)}</span>
               </div>
             )}
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Sale Date</span>
+              <span className="font-medium text-gray-900">
+                {new Date(`${saleDate}T00:00:00`).toLocaleDateString("en-PK", { day: "numeric", month: "long", year: "numeric" })}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
