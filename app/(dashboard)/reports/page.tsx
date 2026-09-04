@@ -35,6 +35,7 @@ interface ReportData {
     totalPhonesPurchased: number; totalPurchaseCost: number
     totalPhonesSold: number; totalSaleRevenue: number
     totalProfit: number; totalDirectProfit: number; netProfit: number; totalExpenses: number; averageProfitPerPhone: number
+    accSaleRevenue: number; accProfit: number
   }
   budgeting: { totalOwedToSuppliers: number; totalPendingFromShops: number; lotsCreated: number; salesCount: number }
   sales: Sale[]
@@ -241,7 +242,7 @@ export default function ReportsPage() {
           <div className="overflow-y-auto flex-1 px-5 py-4">
             {data && modal.type === "purchased" && <PurchasedModal phones={data.purchasedPhones} />}
             {data && modal.type === "sold" && <SoldModal sales={data.sales} />}
-            {data && modal.type === "profit" && <ProfitModal sales={data.sales} totalRevenue={data.stats.totalSaleRevenue} totalProfit={data.stats.totalProfit} />}
+            {data && modal.type === "profit" && <ProfitModal sales={data.sales} totalRevenue={data.stats.totalSaleRevenue} totalProfit={data.stats.totalProfit} accSaleRevenue={data.stats.accSaleRevenue} accProfit={data.stats.accProfit} />}
             {data && modal.type === "expenses" && <ExpensesModal details={data.expenseDetails} byCategory={data.expenseByCategory} total={data.stats.totalExpenses} />}
             {data && modal.type === "netprofit" && <NetProfitModal stats={data.stats} byCategory={data.expenseByCategory} />}
             {data && modal.type === "suppliers" && <SuppliersModal suppliers={data.supplierDetails} />}
@@ -333,33 +334,54 @@ function SoldModal({ sales }: { sales: Sale[] }) {
   )
 }
 
-function ProfitModal({ sales, totalRevenue, totalProfit }: { sales: Sale[]; totalRevenue: number; totalProfit: number }) {
-  if (!sales.length) return <Empty text="No sales this period" />
-  const profitFromSales = sales.reduce((s,x) => s + x.profit, 0)
+function ProfitModal({ sales, totalRevenue, totalProfit, accSaleRevenue, accProfit }: {
+  sales: Sale[]; totalRevenue: number; totalProfit: number; accSaleRevenue: number; accProfit: number
+}) {
+  if (!sales.length && accSaleRevenue <= 0) return <Empty text="No sales this period" />
+  const phoneSaleRevenue = totalRevenue - accSaleRevenue
+  const phoneProfit = totalProfit - accProfit
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2 text-center bg-gray-50 rounded-lg p-3 mb-4">
         <div><p className="text-xs text-gray-500">Revenue</p><p className="text-sm font-bold">{formatPKR(totalRevenue)}</p></div>
         <div><p className="text-xs text-gray-500">Cost</p><p className="text-sm font-bold">{formatPKR(totalRevenue - totalProfit)}</p></div>
-        <div><p className="text-xs text-gray-500">Gross Profit</p><p className="text-sm font-bold text-green-700">{formatPKR(profitFromSales)}</p></div>
+        <div><p className="text-xs text-gray-500">Gross Profit</p><p className="text-sm font-bold text-green-700">{formatPKR(totalProfit)}</p></div>
       </div>
-      {sales.map((s, i) => (
-        <div key={i} className="py-2 border-b border-gray-100 last:border-0">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-900">{s.phoneModel}</p>
-              <p className="text-xs text-gray-400">{s.shopBuyerName ?? s.customerName ?? "Walk-in"} · {s.soldAt}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-400">{formatPKR(s.costPrice)} cost</p>
-              <p className="text-sm font-bold text-gray-800">{formatPKR(s.sellingPrice)}</p>
-              <p className={cn("text-xs font-semibold", s.profit >= 0 ? "text-green-600" : "text-red-600")}>
-                {s.profit >= 0 ? "+" : ""}{formatPKR(s.profit)}
-              </p>
-            </div>
+      {accSaleRevenue > 0 && (
+        <div className="rounded-lg border border-purple-100 bg-purple-50 px-3 py-2.5 flex justify-between items-center">
+          <div>
+            <p className="text-sm font-medium text-purple-900">Accessories</p>
+            <p className="text-xs text-purple-500">Revenue: {formatPKR(accSaleRevenue)}</p>
           </div>
+          <p className={cn("text-sm font-bold", accProfit >= 0 ? "text-purple-700" : "text-red-600")}>
+            {accProfit >= 0 ? "+" : ""}{formatPKR(accProfit)}
+          </p>
         </div>
-      ))}
+      )}
+      {sales.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            Phone Sales{accSaleRevenue > 0 ? ` · ${formatPKR(phoneSaleRevenue)} revenue · ${formatPKR(phoneProfit)} profit` : ""}
+          </p>
+          {sales.map((s, i) => (
+            <div key={i} className="py-2 border-b border-gray-100 last:border-0">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{s.phoneModel}</p>
+                  <p className="text-xs text-gray-400">{s.shopBuyerName ?? s.customerName ?? "Walk-in"} · {s.soldAt}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">{formatPKR(s.costPrice)} cost</p>
+                  <p className="text-sm font-bold text-gray-800">{formatPKR(s.sellingPrice)}</p>
+                  <p className={cn("text-xs font-semibold", s.profit >= 0 ? "text-green-600" : "text-red-600")}>
+                    {s.profit >= 0 ? "+" : ""}{formatPKR(s.profit)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -413,11 +435,23 @@ function NetProfitModal({ stats, byCategory }: { stats: ReportData["stats"]; byC
           <span className="text-gray-600">Total Revenue</span><span className="font-semibold">{formatPKR(stats.totalSaleRevenue)}</span>
         </div>
         <div className="flex justify-between py-2 border-b border-gray-100">
-          <span className="text-gray-600">Cost of Phones Sold</span>
+          <span className="text-gray-600">Cost of Sales</span>
           <span className="font-semibold text-red-600">− {formatPKR(stats.totalSaleRevenue - stats.totalProfit)}</span>
         </div>
+        {stats.accProfit > 0 && (
+          <div className="flex justify-between py-2 border-b border-gray-100">
+            <span className="text-gray-600">Phone Sales Profit</span>
+            <span className="font-semibold">{formatPKR(stats.totalProfit - stats.accProfit)}</span>
+          </div>
+        )}
+        {stats.accProfit > 0 && (
+          <div className="flex justify-between py-2 border-b border-gray-100">
+            <span className="text-purple-700 flex items-center gap-1.5">+ Accessories Profit</span>
+            <span className="font-semibold text-purple-700">+ {formatPKR(stats.accProfit)}</span>
+          </div>
+        )}
         <div className="flex justify-between py-2 border-b border-gray-200 font-medium">
-          <span className="text-gray-700">Gross Profit (Phones)</span>
+          <span className="text-gray-700">Gross Profit</span>
           <span className={cn("font-bold", stats.totalProfit >= 0 ? "text-green-700" : "text-red-700")}>{formatPKR(stats.totalProfit)}</span>
         </div>
         {stats.totalDirectProfit > 0 && (
