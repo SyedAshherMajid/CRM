@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { BrandOption } from "@/lib/phone-models"
 
 export interface PhoneEntry {
   imei: string
@@ -11,7 +12,7 @@ export interface PhoneEntry {
 
 export interface PhoneGroup {
   id: string
-  brand: "iPhone" | "Google Pixel"
+  brand: BrandOption
   model: string
   storage: string
   color: string

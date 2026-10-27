@@ -42,6 +42,7 @@ const BRAND_OPTS = [
   { value: "all", label: "All Brands" },
   { value: "iPhone", label: "iPhone" },
   { value: "Google Pixel", label: "Pixel" },
+  { value: "Samsung", label: "Samsung" },
 ]
 
 const STORAGE_OPTS = [
@@ -147,10 +148,13 @@ export default function InventoryPage() {
 
   const modelOpts = [
     { value: "all", label: "All Models" },
+    // Samsung models are typed manually, so there is no fixed list — use the search box instead
     ...(brand === "iPhone"
       ? IPHONE_MODELS
       : brand === "Google Pixel"
       ? PIXEL_MODELS
+      : brand === "Samsung"
+      ? []
       : [...IPHONE_MODELS, ...PIXEL_MODELS]
     ).map((m) => ({ value: m, label: m })),
   ]

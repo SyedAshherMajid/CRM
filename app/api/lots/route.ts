@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
 import { toBrand, toStorage, toCondition, toPtaStatus } from "@/lib/utils/enum-mappers"
+import { BRANDS } from "@/lib/phone-models"
 
 export async function GET() {
   try {
@@ -60,6 +61,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lot name is required" }, { status: 400 })
     if (!totalAmount || isNaN(Number(totalAmount)))
       return NextResponse.json({ error: "Total amount is required" }, { status: 400 })
+
+    const invalidPhone = (phones ?? []).find(
+      (p: { brand?: string; model?: string }) =>
+        !(BRANDS as readonly string[]).includes(p.brand ?? "") || !p.model?.trim()
+    )
+    if (invalidPhone)
+      return NextResponse.json({ error: "Every phone needs a valid brand and model" }, { status: 400 })
 
     const imeis = (phones ?? []).map((p: { imei: string }) => p.imei).filter(Boolean)
     const uniqueImeis = new Set(imeis)
@@ -140,7 +148,7 @@ export async function POST(req: Request) {
           }) => ({
             lotId: newLot.id,
             brand: toBrand(p.brand),
-            model: p.model,
+            model: p.model.trim(),
             storage: toStorage(p.storage),
             color: p.color,
             imei: imeiToStored.get(p.imei) ?? p.imei,

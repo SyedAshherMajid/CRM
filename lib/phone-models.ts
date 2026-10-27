@@ -26,6 +26,10 @@ export const IPHONE_MODELS = [
   "iPhone 17 Air",
   "iPhone 17 Pro",
   "iPhone 17 Pro Max",
+  "iPhone 18",
+  "iPhone 18 Pro",
+  "iPhone 18 Pro Max",
+  "iPhone Duo",
 ] as const
 
 export const PIXEL_MODELS = [
@@ -45,10 +49,24 @@ export const PIXEL_MODELS = [
   "Pixel 9a",
 ] as const
 
+export const BRANDS = ["iPhone", "Google Pixel", "Samsung"] as const
+export type BrandOption = (typeof BRANDS)[number]
+
+// Samsung has too many models for a dropdown — its model is typed in manually
 export const ALL_MODELS = {
   iPhone: IPHONE_MODELS,
   "Google Pixel": PIXEL_MODELS,
 } as const
+
+export function hasModelList(brand: BrandOption): brand is keyof typeof ALL_MODELS {
+  return brand in ALL_MODELS
+}
+
+export const PTA_OPTIONS: Record<BrandOption, string[]> = {
+  iPhone: ["JV", "PTA", "Non-PTA"],
+  "Google Pixel": ["PTA", "Non-PTA", "Patched", "CPID"],
+  Samsung: ["PTA", "Non-PTA", "Patched", "CPID"],
+}
 
 export const STORAGE_OPTIONS = ["64GB", "128GB", "256GB", "512GB", "1TB"] as const
 

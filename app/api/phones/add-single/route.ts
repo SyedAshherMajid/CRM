@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/get-current-user"
-import { Brand, Storage, Condition } from "@prisma/client"
+import { Brand, Storage, Condition, PtaStatus } from "@prisma/client"
+import { BRANDS } from "@/lib/phone-models"
+import { toBrand, toPtaStatus } from "@/lib/utils/enum-mappers"
 
 // Map UI values to Prisma enum values
 function mapBrand(brand: string): Brand {
-  if (brand === "Google Pixel") return "GooglePixel" as Brand
-  return brand as Brand // iPhone stays as is
+  return toBrand(brand) as Brand
 }
 
 function mapStorage(storage: string): Storage {
@@ -33,11 +34,15 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await req.json()
-    const { brand, model, storage, color, condition, batteryHealth, costPrice, imei, notes, sellerCnic, sellerName } = body
+    const { brand, model, storage, color, condition, batteryHealth, costPrice, imei, notes, sellerCnic, sellerName, ptaStatus } = body
 
     // Validation
-    if (!brand || !model || !storage || !color || !condition || !costPrice || !imei) {
+    if (!brand || !model?.trim() || !storage || !color || !condition || !costPrice || !imei) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    if (!(BRANDS as readonly string[]).includes(brand)) {
+      return NextResponse.json({ error: "Invalid brand" }, { status: 400 })
     }
 
     if (Number(costPrice) <= 0) {
@@ -108,13 +113,14 @@ export async function POST(req: Request) {
       data: {
         lotId: directPurchaseLot.id,
         brand: mapBrand(brand),
-        model,
+        model: model.trim(),
         storage: mapStorage(storage),
         color,
         imei: storedIMEI,
         condition: mapCondition(condition),
         batteryHealth: batteryHealth || null,
         costPrice: Number(costPrice),
+        ptaStatus: toPtaStatus(ptaStatus) as PtaStatus | null,
         sellerCnic: sellerCnic?.trim() || null,
         sellerName: sellerName?.trim() || null,
         status: "available",

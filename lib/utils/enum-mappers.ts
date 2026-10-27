@@ -2,7 +2,9 @@
 // Prisma uses the key name (e.g. "GooglePixel"), not the @map db value ("Google Pixel")
 
 export function toBrand(v: string) {
-  return v === "Google Pixel" ? "GooglePixel" : "iPhone"
+  if (v === "Google Pixel") return "GooglePixel"
+  if (v === "Samsung") return "Samsung"
+  return "iPhone"
 }
 
 export function toStorage(v: string) {

@@ -86,6 +86,7 @@ model LotPayment {
 enum Brand {
   iPhone
   GooglePixel @map("Google Pixel")
+  Samsung
 }
 
 enum PtaStatus {

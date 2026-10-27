@@ -8,11 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { IPHONE_MODELS, PIXEL_MODELS, STORAGE_OPTIONS, CONDITION_OPTIONS } from "@/lib/phone-models"
-
-type BrandOption = "iPhone" | "Google Pixel"
-
-const PTA_STATUS_OPTIONS = ["JV", "PTA", "Non-PTA", "Patched", "CPID"]
+import { ALL_MODELS, BRANDS, PTA_OPTIONS, STORAGE_OPTIONS, CONDITION_OPTIONS, hasModelList, type BrandOption } from "@/lib/phone-models"
 
 interface AddSinglePhoneDialogProps {
   open: boolean
@@ -42,7 +38,7 @@ export function AddSinglePhoneDialog({ open, onOpenChange, onSuccess }: AddSingl
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
 
-  const models = brand === "iPhone" ? IPHONE_MODELS : PIXEL_MODELS
+  const ptaOptions = PTA_OPTIONS[brand]
 
   function handleCnicChange(e: React.ChangeEvent<HTMLInputElement>) {
     setSellerCnic(formatCnic(e.target.value))
@@ -64,7 +60,7 @@ export function AddSinglePhoneDialog({ open, onOpenChange, onSuccess }: AddSingl
   }
 
   async function handleSubmit() {
-    if (!model || !storage || !color || !condition) {
+    if (!model.trim() || !storage || !color || !condition) {
       toast.error("Please fill all required fields")
       return
     }
@@ -89,7 +85,7 @@ export function AddSinglePhoneDialog({ open, onOpenChange, onSuccess }: AddSingl
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brand,
-          model,
+          model: model.trim(),
           storage,
           color,
           condition,
@@ -134,30 +130,41 @@ export function AddSinglePhoneDialog({ open, onOpenChange, onSuccess }: AddSingl
           {/* Brand */}
           <div className="space-y-1">
             <Label className="text-xs font-medium">Brand</Label>
-            <Select value={brand} onValueChange={(v: BrandOption) => { setBrand(v); setModel("") }}>
+            <Select value={brand} onValueChange={(v: BrandOption) => { setBrand(v); setModel(""); setPtaStatus("") }}>
               <SelectTrigger className="h-10 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="iPhone">iPhone</SelectItem>
-                <SelectItem value="Google Pixel">Google Pixel</SelectItem>
+                {BRANDS.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Model */}
+          {/* Model — dropdown for iPhone/Pixel, typed manually for Samsung */}
           <div className="space-y-1">
             <Label className="text-xs font-medium">Model <span className="text-red-500">*</span></Label>
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger className="h-10 text-sm">
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent className="max-h-48">
-                {models.map((m) => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {hasModelList(brand) ? (
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger className="h-10 text-sm">
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent className="max-h-48">
+                  {ALL_MODELS[brand].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                placeholder="Type model, e.g. Galaxy S24 Ultra"
+                value={model}
+                maxLength={60}
+                onChange={(e) => setModel(e.target.value)}
+                className="h-10 text-sm"
+              />
+            )}
           </div>
 
           {/* Storage & Color */}
@@ -208,7 +215,7 @@ export function AddSinglePhoneDialog({ open, onOpenChange, onSuccess }: AddSingl
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PTA_STATUS_OPTIONS.map((p) => (
+                  {ptaOptions.map((p) => (
                     <SelectItem key={p} value={p}>{p}</SelectItem>
                   ))}
                 </SelectContent>

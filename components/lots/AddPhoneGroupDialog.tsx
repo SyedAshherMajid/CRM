@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ALL_MODELS, STORAGE_OPTIONS, CONDITION_OPTIONS } from "@/lib/phone-models"
+import { ALL_MODELS, BRANDS, PTA_OPTIONS, STORAGE_OPTIONS, CONDITION_OPTIONS, hasModelList, type BrandOption } from "@/lib/phone-models"
 import type { PhoneGroup } from "@/lib/stores/lot-form-store"
 import { cn } from "@/lib/utils"
 
@@ -15,15 +15,8 @@ interface Props {
   onAdd: (group: Omit<PhoneGroup, "id" | "phones">) => void
 }
 
-const brands = ["iPhone", "Google Pixel"] as const
-
-const PTA_OPTIONS: Record<string, string[]> = {
-  iPhone: ["JV", "PTA", "Non-PTA"],
-  "Google Pixel": ["PTA", "Non-PTA", "Patched", "CPID"],
-}
-
 export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
-  const [brand, setBrand] = useState<"iPhone" | "Google Pixel">("iPhone")
+  const [brand, setBrand] = useState<BrandOption>("iPhone")
   const [model, setModel] = useState("")
   const [storage, setStorage] = useState("")
   const [color, setColor] = useState("")
@@ -37,17 +30,17 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
     setPtaStatus(""); setBatteryHealth(""); setQuantity("")
   }
 
-  function handleBrandChange(b: "iPhone" | "Google Pixel") {
+  function handleBrandChange(b: BrandOption) {
     setBrand(b)
     setModel("")
     setPtaStatus("")
   }
 
   function handleAdd() {
-    if (!model || !storage || !color || !condition || !ptaStatus || !quantity) return
+    if (!model.trim() || !storage || !color || !condition || !ptaStatus || !quantity) return
     onAdd({
       brand,
-      model,
+      model: model.trim(),
       storage,
       color: color.trim(),
       condition,
@@ -59,9 +52,8 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
     onClose()
   }
 
-  const models = ALL_MODELS[brand]
   const ptaOptions = PTA_OPTIONS[brand]
-  const isValid = model && storage && color.trim() && condition && ptaStatus && Number(quantity) > 0
+  const isValid = model.trim() && storage && color.trim() && condition && ptaStatus && Number(quantity) > 0
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
@@ -80,14 +72,14 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
           {/* Brand */}
           <div className="space-y-1.5">
             <Label>Brand *</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {brands.map((b) => (
+            <div className="grid grid-cols-3 gap-2">
+              {BRANDS.map((b) => (
                 <button
                   key={b}
                   type="button"
                   onClick={() => handleBrandChange(b)}
                   className={cn(
-                    "py-2.5 px-3 rounded-lg border text-sm font-medium transition-colors",
+                    "py-2.5 px-2 rounded-lg border text-sm font-medium transition-colors",
                     brand === b
                       ? "bg-black text-white border-black"
                       : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
@@ -102,14 +94,24 @@ export function AddPhoneGroupDialog({ open, onClose, onAdd }: Props) {
           {/* Model */}
           <div className="space-y-1.5">
             <Label>Model *</Label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Select model...</option>
-              {models.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            {hasModelList(brand) ? (
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select model...</option>
+                {ALL_MODELS[brand].map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ) : (
+              <Input
+                placeholder="Type model, e.g. Galaxy S24 Ultra"
+                value={model}
+                maxLength={60}
+                onChange={(e) => setModel(e.target.value)}
+                className="h-11"
+              />
+            )}
           </div>
 
           {/* Storage */}
