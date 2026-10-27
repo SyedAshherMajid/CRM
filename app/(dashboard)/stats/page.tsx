@@ -291,7 +291,7 @@ function CustomersModal({ customers, total }: {
           <div>
             <p className="font-medium text-gray-900">{c.name}</p>
             <p className="text-xs text-gray-400">
-              {c.pendingCount} pending sale{c.pendingCount !== 1 ? "s" : ""} · {c.totalSales} total
+              {c.pendingCount} pending item{c.pendingCount !== 1 ? "s" : ""} · {c.totalSales} sale{c.totalSales !== 1 ? "s" : ""}
             </p>
           </div>
           <p className="font-bold text-sm text-blue-700">{formatPKR(c.outstanding)}</p>

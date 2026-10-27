@@ -28,6 +28,8 @@ model User {
   accessoryLotPayments    AccessoryLotPayment[]
   accessorySalesMade      AccessorySale[]
   accessorySalePayments   AccessorySalePayment[]
+  customerLedgerEntries   CustomerLedgerEntry[]
+  customerLedgerPayments  CustomerLedgerPayment[]
 
   @@map("users")
 }
@@ -315,6 +317,40 @@ model CustomerContact {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("customer_contacts")
+}
+
+// Manual amounts a customer owes, not linked to a phone (works like ShopPriorBalance).
+// Linked to the customer by name, the same way sales.customer_name is.
+model CustomerLedgerEntry {
+  id           String   @id @default(uuid())
+  customerName String   @map("customer_name")
+  amount       Decimal  @db.Decimal(12, 2)
+  amountPaid   Decimal  @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  description  String
+  entryDate    DateTime @default(now()) @map("entry_date")
+  recordedBy   String   @map("recorded_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  recorder User                    @relation(fields: [recordedBy], references: [id])
+  payments CustomerLedgerPayment[]
+
+  @@index([customerName])
+  @@map("customer_ledger_entries")
+}
+
+model CustomerLedgerPayment {
+  id         String   @id @default(uuid())
+  entryId    String   @map("entry_id")
+  amount     Decimal  @db.Decimal(12, 2)
+  receivedAt DateTime @default(now()) @map("received_at")
+  notes      String?
+  recordedBy String   @map("recorded_by")
+
+  entry    CustomerLedgerEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  recorder User                @relation(fields: [recordedBy], references: [id])
+
+  @@index([entryId])
+  @@map("customer_ledger_payments")
 }
 
 // ─── Accessories ──────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ export async function GET() {
       priorBalRows,
       accessoryShopStats,
       accessoryLotStats,
+      customerLedgerRows,
     ] = await Promise.all([
 
       // 1. Available phones aggregate
@@ -165,6 +166,20 @@ export async function GET() {
           supplier: { select: { id: true, name: true } },
         },
       }),
+
+      // 13. Manual customer ledger amounts per customer (all-time)
+      db.$queryRaw<Array<{
+        customer_name: string
+        outstanding: string
+        pending_count: bigint
+      }>>`
+        SELECT
+          customer_name,
+          (COALESCE(SUM(amount),0) - COALESCE(SUM(amount_paid),0))::text AS outstanding,
+          COUNT(*) FILTER (WHERE amount > amount_paid)::bigint           AS pending_count
+        FROM customer_ledger_entries
+        GROUP BY customer_name
+      `,
     ])
 
     // ── Stock ──────────────────────────────────────────────────────────────
@@ -251,12 +266,32 @@ export async function GET() {
     const totalShopsOwing = shopsMapped.reduce((s, r) => s + r.outstanding, 0)
 
     // ── Customers owing ────────────────────────────────────────────────────
-    const customersMapped = customerOwingRows.map((r) => ({
-      name: r.customer_name,
-      outstanding: Number(r.outstanding),
-      pendingCount: Number(r.pending_count),
-      totalSales: Number(r.total_sales),
-    }))
+    // Merge phone sales + manual ledger amounts by customer name
+    const customerMap = new Map<string, { name: string; outstanding: number; pendingCount: number; totalSales: number }>()
+    for (const r of customerOwingRows) {
+      customerMap.set(r.customer_name, {
+        name: r.customer_name,
+        outstanding: Number(r.outstanding),
+        pendingCount: Number(r.pending_count),
+        totalSales: Number(r.total_sales),
+      })
+    }
+    for (const r of customerLedgerRows) {
+      const existing = customerMap.get(r.customer_name)
+      if (existing) {
+        existing.outstanding += Number(r.outstanding)
+        existing.pendingCount += Number(r.pending_count)
+      } else {
+        customerMap.set(r.customer_name, {
+          name: r.customer_name,
+          outstanding: Number(r.outstanding),
+          pendingCount: Number(r.pending_count),
+          totalSales: 0,
+        })
+      }
+    }
+    const customersMapped = Array.from(customerMap.values())
+      .sort((a, b) => b.outstanding - a.outstanding)
     const totalCustomersOwing = customersMapped.reduce((s, r) => s + Math.max(0, r.outstanding), 0)
 
     // ── Supplier debt ──────────────────────────────────────────────────────

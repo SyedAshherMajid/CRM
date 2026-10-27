@@ -33,7 +33,19 @@ interface CustomerListItem {
   outstanding: number
   pendingCount: number
   totalSales: number
+  totalEntries: number
   lastSaleAt: string | null
+}
+
+interface LedgerEntry {
+  id: string
+  amount: number
+  amountPaid: number
+  pending: number
+  description: string
+  entryDate: string
+  recordedBy: string
+  payments: Array<{ id: string; amount: number; receivedAt: string; notes: string | null }>
 }
 
 interface CustomerSale {
@@ -61,6 +73,15 @@ interface CustomerDetail {
   name: string
   outstanding: number
   sales: CustomerSale[]
+  entries: LedgerEntry[]
+}
+
+type LedgerItem =
+  | { kind: "sale"; date: string; sale: CustomerSale }
+  | { kind: "entry"; date: string; entry: LedgerEntry }
+
+function todayPKT() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" })
 }
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
@@ -413,6 +434,9 @@ function CustomerCard({ customer, onClick }: { customer: CustomerListItem; onCli
           </div>
           <div className="flex items-center gap-3 mt-2 pl-9">
             <span className="text-xs text-gray-500">{customer.totalSales} sale{customer.totalSales !== 1 ? "s" : ""}</span>
+            {customer.totalEntries > 0 && (
+              <span className="text-xs text-gray-500">{customer.totalEntries} manual</span>
+            )}
             {customer.pendingCount > 0 && (
               <Badge className="bg-orange-100 text-orange-700 border-0 text-xs py-0">
                 {customer.pendingCount} pending
@@ -460,6 +484,23 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Add manual amount
+  const [addAmountOpen, setAddAmountOpen] = useState(false)
+  const [addAmount, setAddAmount] = useState("")
+  const [addDesc, setAddDesc] = useState("")
+  const [addDate, setAddDate] = useState(todayPKT())
+  const [addAmountSaving, setAddAmountSaving] = useState(false)
+
+  // Receive payment for a manual amount
+  const [entryPayDialog, setEntryPayDialog] = useState<LedgerEntry | null>(null)
+  const [entryPayAmount, setEntryPayAmount] = useState("")
+  const [entryPayNotes, setEntryPayNotes] = useState("")
+  const [entryPaySaving, setEntryPaySaving] = useState(false)
+
+  // Delete a manual amount
+  const [deleteEntry, setDeleteEntry] = useState<LedgerEntry | null>(null)
+  const [deletingEntry, setDeletingEntry] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -495,6 +536,79 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
       toast.error("Failed to record payment")
     } finally {
       setSalePaySaving(false)
+    }
+  }
+
+  async function handleAddAmount() {
+    if (!addAmount || Number(addAmount) <= 0 || !addDesc.trim()) return
+    setAddAmountSaving(true)
+    try {
+      const res = await fetch("/api/customers/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName,
+          amount: Number(addAmount),
+          description: addDesc.trim(),
+          entryDate: addDate,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to add amount")
+      } else {
+        toast.success("Amount added to ledger")
+        setAddAmountOpen(false); setAddAmount(""); setAddDesc(""); setAddDate(todayPKT())
+        load()
+      }
+    } catch {
+      toast.error("Failed to add amount")
+    } finally {
+      setAddAmountSaving(false)
+    }
+  }
+
+  async function handleEntryPayment() {
+    if (!entryPayDialog || !entryPayAmount || Number(entryPayAmount) <= 0) return
+    setEntryPaySaving(true)
+    try {
+      const res = await fetch(`/api/customers/entries/${entryPayDialog.id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: Number(entryPayAmount), notes: entryPayNotes }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to record payment")
+      } else {
+        toast.success("Payment recorded")
+        setEntryPayDialog(null); setEntryPayAmount(""); setEntryPayNotes("")
+        load()
+      }
+    } catch {
+      toast.error("Failed to record payment")
+    } finally {
+      setEntryPaySaving(false)
+    }
+  }
+
+  async function handleDeleteEntry() {
+    if (!deleteEntry) return
+    setDeletingEntry(true)
+    try {
+      const res = await fetch(`/api/customers/entries/${deleteEntry.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        toast.error(err.error ?? "Failed to delete amount")
+      } else {
+        toast.success("Amount deleted")
+        setDeleteEntry(null)
+        load()
+      }
+    } catch {
+      toast.error("Failed to delete amount")
+    } finally {
+      setDeletingEntry(false)
     }
   }
 
@@ -541,12 +655,22 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
     }
   }
 
-  const pendingCount = detail?.sales.filter((s) => s.pending > 0).length ?? 0
-  const filteredSales = detail?.sales.filter((s) => {
-    if (activeTab === "pending") return s.pending > 0
-    if (activeTab === "paid") return s.pending <= 0
+  // Phone sales and manual amounts shown together, newest first
+  const ledgerItems: LedgerItem[] = detail
+    ? [
+        ...detail.sales.map((sale): LedgerItem => ({ kind: "sale", date: sale.soldAt, sale })),
+        ...detail.entries.map((entry): LedgerItem => ({ kind: "entry", date: entry.entryDate, entry })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    : []
+  const itemPending = (item: LedgerItem) => (item.kind === "sale" ? item.sale.pending : item.entry.pending)
+
+  const pendingCount = ledgerItems.filter((i) => itemPending(i) > 0).length
+  const filteredItems = ledgerItems.filter((i) => {
+    if (activeTab === "pending") return itemPending(i) > 0
+    if (activeTab === "paid") return itemPending(i) <= 0
     return true
-  }) ?? []
+  })
+  const hasEntries = (detail?.entries.length ?? 0) > 0
 
   return (
     <>
@@ -597,35 +721,118 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
                 {/* Outstanding balance card */}
                 <Card className="shadow-sm">
                   <CardContent className="p-4">
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Owes You</p>
-                    <p className={cn(
-                      "text-2xl font-bold mt-1",
-                      detail.outstanding > 0 ? "text-orange-600" : "text-green-600"
-                    )}>
-                      {detail.outstanding > 0 ? formatPKR(detail.outstanding) : "All settled ✓"}
-                    </p>
-                    {pendingCount > 0 && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        {pendingCount} sale{pendingCount !== 1 ? "s" : ""} with pending payment
-                      </p>
-                    )}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Owes You</p>
+                        <p className={cn(
+                          "text-2xl font-bold mt-1",
+                          detail.outstanding > 0 ? "text-orange-600" : "text-green-600"
+                        )}>
+                          {detail.outstanding > 0 ? formatPKR(detail.outstanding) : "All settled ✓"}
+                        </p>
+                        {pendingCount > 0 && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            {pendingCount} item{pendingCount !== 1 ? "s" : ""} with pending payment
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 flex-shrink-0"
+                        onClick={() => { setAddAmount(""); setAddDesc(""); setAddDate(todayPKT()); setAddAmountOpen(true) }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add Amount
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* Sales list */}
+                {/* Sales + manual amounts list */}
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
                   <TabsList className="w-full grid grid-cols-3 h-9">
-                    <TabsTrigger value="all" className="text-xs">All ({detail.sales.length})</TabsTrigger>
+                    <TabsTrigger value="all" className="text-xs">All ({ledgerItems.length})</TabsTrigger>
                     <TabsTrigger value="pending" className="text-xs">Pending ({pendingCount})</TabsTrigger>
-                    <TabsTrigger value="paid" className="text-xs">Paid ({detail.sales.length - pendingCount})</TabsTrigger>
+                    <TabsTrigger value="paid" className="text-xs">Paid ({ledgerItems.length - pendingCount})</TabsTrigger>
                   </TabsList>
                 </Tabs>
 
                 <div className="space-y-2">
-                  {filteredSales.length === 0 ? (
-                    <p className="text-center text-gray-400 text-sm py-6">No sales in this category</p>
+                  {filteredItems.length === 0 ? (
+                    <p className="text-center text-gray-400 text-sm py-6">Nothing in this category</p>
                   ) : (
-                    filteredSales.map((sale) => (
+                    filteredItems.map((item) => {
+                      if (item.kind === "entry") return (
+                      <Card key={`entry-${item.entry.id}`} className="shadow-sm">
+                        <CardContent className="p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 text-sm break-words">{item.entry.description}</p>
+                              <Badge className="bg-blue-50 text-blue-700 border-0 text-xs py-0 mt-1">Manual entry</Badge>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {new Date(item.entry.entryDate).toLocaleDateString("en-PK", {
+                                  day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Karachi",
+                                })}
+                                {` · by ${item.entry.recordedBy}`}
+                              </p>
+                              {/* Payment history for this amount */}
+                              {item.entry.payments.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
+                                  {item.entry.payments.map((p) => (
+                                    <div key={p.id} className="flex justify-between text-xs text-gray-400">
+                                      <span className="flex items-center gap-1">
+                                        <Calendar className="w-3 h-3" />
+                                        {new Date(p.receivedAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}
+                                        {p.notes && ` · ${p.notes}`}
+                                      </span>
+                                      <span className="font-medium">{formatPKR(p.amount)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0 space-y-1">
+                              <p className="text-sm font-semibold text-gray-900">{formatPKR(item.entry.amount)}</p>
+                              <p className="text-xs text-gray-400">
+                                Received: {formatPKR(item.entry.amountPaid)}
+                              </p>
+                              {item.entry.pending > 0 ? (
+                                <Badge className="bg-orange-100 text-orange-700 border-0 text-xs">
+                                  {formatPKR(item.entry.pending)} due
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-green-100 text-green-700 border-0 text-xs">Paid ✓</Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 mt-2">
+                            {item.entry.pending > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 h-8 text-xs"
+                                onClick={() => { setEntryPayDialog(item.entry); setEntryPayAmount(""); setEntryPayNotes("") }}
+                              >
+                                Receive Payment
+                              </Button>
+                            )}
+                            {item.entry.amountPaid === 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => setDeleteEntry(item.entry)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      )
+                      const sale = item.sale
+                      return (
                       <Card key={sale.id} className="shadow-sm">
                         <CardContent className="p-3">
                           <div className="flex items-start justify-between gap-2">
@@ -689,7 +896,8 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
                           )}
                         </CardContent>
                       </Card>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </>
@@ -739,19 +947,26 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
             <p className="text-sm text-gray-700">
               Remove <span className="font-semibold">{customerName}</span> from the customer list?
             </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 space-y-1">
-              <p className="font-medium">What happens:</p>
-              <p>• Their sale records and payments are <span className="font-medium">preserved</span></p>
-              <p>• The customer name will be cleared from those sales</p>
-              <p>• They will no longer appear in the customer list</p>
-            </div>
+            {hasEntries ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 space-y-1">
+                <p className="font-medium">Cannot remove yet</p>
+                <p>This customer has manual amounts in their ledger. Delete those amounts first, then remove the customer.</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 space-y-1">
+                <p className="font-medium">What happens:</p>
+                <p>• Their sale records and payments are <span className="font-medium">preserved</span></p>
+                <p>• The customer name will be cleared from those sales</p>
+                <p>• They will no longer appear in the customer list</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button
               variant="destructive"
               onClick={handleDelete}
-              disabled={deleting}
+              disabled={deleting || hasEntries}
             >
               {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Remove Customer
@@ -803,6 +1018,147 @@ function CustomerDetailDialog({ customerName, onClose }: { customerName: string;
             <Button onClick={handleSalePayment} disabled={salePaySaving}>
               {salePaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add manual amount dialog */}
+      <Dialog open={addAmountOpen} onOpenChange={(v) => { if (!v) setAddAmountOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Amount</DialogTitle>
+            <DialogDescription className="text-xs">
+              Add an amount {customerName} owes you that is not linked to a phone sale.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Amount (PKR) *</Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                placeholder="e.g. 25000"
+                value={addAmount}
+                onChange={(e) => setAddAmount(e.target.value)}
+                className="h-11 text-base"
+              />
+              {addAmount && <p className="text-xs text-gray-400">{formatPKR(Number(addAmount))}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>What is it for? *</Label>
+              <Input
+                placeholder="e.g. Old balance from notebook"
+                value={addDesc}
+                maxLength={150}
+                onChange={(e) => setAddDesc(e.target.value)}
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={addDate}
+                max={todayPKT()}
+                onChange={(e) => setAddDate(e.target.value)}
+                className="h-11"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddAmountOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddAmount}
+              disabled={addAmountSaving || !addAmount || Number(addAmount) <= 0 || !addDesc.trim()}
+            >
+              {addAmountSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Add Amount
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive payment for a manual amount dialog */}
+      <Dialog open={entryPayDialog !== null} onOpenChange={(v) => { if (!v) setEntryPayDialog(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Receive Payment</DialogTitle>
+            <DialogDescription className="sr-only">Record payment for this amount</DialogDescription>
+          </DialogHeader>
+          {entryPayDialog && (
+            <div className="space-y-3 py-1">
+              <Card className="bg-gray-50 border-0">
+                <CardContent className="p-3 text-sm">
+                  <p className="font-medium break-words">{entryPayDialog.description}</p>
+                  <p className="text-gray-500 mt-0.5">Pending: {formatPKR(entryPayDialog.pending)}</p>
+                </CardContent>
+              </Card>
+              <div className="space-y-1.5">
+                <Label>Amount (PKR) *</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  placeholder={`Max: ${formatPKR(entryPayDialog.pending)}`}
+                  value={entryPayAmount}
+                  onChange={(e) => setEntryPayAmount(e.target.value)}
+                  className="h-11 text-base"
+                />
+                {entryPayAmount && <p className="text-xs text-gray-400">{formatPKR(Number(entryPayAmount))}</p>}
+                {entryPayAmount && Number(entryPayAmount) > entryPayDialog.pending && (
+                  <p className="text-xs text-orange-600">
+                    Only {formatPKR(entryPayDialog.pending)} is pending — that is all that will be recorded.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+                <Input
+                  placeholder="e.g. cash"
+                  value={entryPayNotes}
+                  onChange={(e) => setEntryPayNotes(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEntryPayDialog(null)}>Cancel</Button>
+            <Button
+              onClick={handleEntryPayment}
+              disabled={entryPaySaving || !entryPayAmount || Number(entryPayAmount) <= 0}
+            >
+              {entryPaySaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete manual amount confirmation */}
+      <Dialog open={deleteEntry !== null} onOpenChange={(v) => { if (!v) setDeleteEntry(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete this amount?</DialogTitle>
+            <DialogDescription className="sr-only">Confirm deleting this manual amount</DialogDescription>
+          </DialogHeader>
+          {deleteEntry && (
+            <div className="py-2 space-y-2">
+              <p className="text-sm text-gray-700 break-words">
+                <span className="font-semibold">{formatPKR(deleteEntry.amount)}</span> — {deleteEntry.description}
+              </p>
+              <p className="text-xs text-gray-500">
+                This removes it from {customerName}&apos;s ledger and from all totals. This cannot be undone.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteEntry(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteEntry} disabled={deletingEntry}>
+              {deletingEntry ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

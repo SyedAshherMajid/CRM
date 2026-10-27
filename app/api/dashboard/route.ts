@@ -30,6 +30,7 @@ export async function GET() {
       accessoryLotOwing,
       accessoryShopOwing,
       accessorySalesThisMonth,
+      customerLedgerAgg,
     ] = await Promise.all([
       // 1. Available phones count
       db.phone.count({ where: { status: "available" } }),
@@ -124,6 +125,9 @@ export async function GET() {
           lot: { select: { totalCost: true, totalPieces: true } },
         },
       }),
+
+      // Manual amounts on customer ledgers (not linked to phones)
+      db.customerLedgerEntry.aggregate({ _sum: { amount: true, amountPaid: true } }),
     ])
 
     // Phone profit this month
@@ -160,7 +164,9 @@ export async function GET() {
     const availableStockValue = availableStockAgg._sum.costPrice?.toNumber() ?? 0
     const customerPending =
       (customerSaleAgg._sum.sellingPrice?.toNumber() ?? 0) -
-      (customerSaleAgg._sum.amountReceived?.toNumber() ?? 0)
+      (customerSaleAgg._sum.amountReceived?.toNumber() ?? 0) +
+      (customerLedgerAgg._sum.amount?.toNumber() ?? 0) -
+      (customerLedgerAgg._sum.amountPaid?.toNumber() ?? 0)
     const totalCapital = availableStockValue + totalPendingFromShops + customerPending - totalOwedToSuppliers
     const directProfitThisMonth = directProfitAgg._sum.amount?.toNumber() ?? 0
 
